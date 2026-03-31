@@ -23,7 +23,10 @@ export async function POST(request: Request) {
             },
             body: JSON.stringify({
               model: activeModel,
-              messages: [{ role: "user", content: userMessage }],
+              messages: [
+                { role: "system", content: "You are NudgeBot, an expert security and code audit assistant. ALWAYS respond in English." },
+                { role: "user", content: userMessage }
+              ],
               stream: true,
             }),
           });

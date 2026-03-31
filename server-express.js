@@ -19,13 +19,15 @@ function setupCline() {
 
   // Write secrets
   fs.writeFileSync(secretsFile, JSON.stringify({
-    deepseekApiKey: process.env.DEEPSEEK_API_KEY,
+    deepSeekApiKey: process.env.DEEPSEEK_API_KEY,
+    openRouterApiKey: process.env.OPENROUTER_API_KEY,
+    openAiApiKey: process.env.OPENAI_API_KEY || "",
   }, null, 2));
 
   // Write global state
   fs.writeFileSync(globalStateFile, JSON.stringify({
-    actModeApiProvider: "deepseek",
-    actModeDeepseekModelId: process.env.DEFAULT_MODEL || "deepseek-chat",
+    actModeApiProvider: "openrouter",
+    actModeOpenRouterModelId: "deepseek/deepseek-chat",
     mode: "act",
     autoApprovalSettings: {
       version: 22,
@@ -63,56 +65,30 @@ app.post('/api/chat', async (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    // Call DeepSeek API
-    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [{ role: 'user', content: userMessage }],
-        stream: true,
-      }),
+    // Call Cline CLI task
+    const cline = spawn('npx', [
+      'cline',
+      'task',
+      userMessage,
+      '--config', path.join(process.cwd(), 'data', '.cline'),
+      '--yolo', // Auto-approve actions as configured in globalState
+      '--auto-condense' // Enable context compression for large tasks
+    ]);
+
+    cline.stdout.on('data', (data) => {
+      const content = data.toString();
+      res.write(`data: ${JSON.stringify({ type: 'delta', content })}\n\n`);
     });
 
-    if (!response.ok) {
-      throw new Error(`DeepSeek API Error: ${response.status}`);
-    }
+    cline.stderr.on('data', (data) => {
+      console.error(`[Cline Error] ${data}`);
+    });
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (!line.trim() || !line.startsWith('data: ')) continue;
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-
-        try {
-          const parsed = JSON.parse(data);
-          const content = parsed.choices?.[0]?.delta?.content;
-          if (content) {
-            res.write(`data: ${JSON.stringify({ type: 'delta', content })}\n\n`);
-          }
-        } catch (e) {
-          // Ignore parse errors
-        }
-      }
-    }
-
-    res.write(`data: ${JSON.stringify({ type: 'done', model: 'deepseek-chat' })}\n\n`);
-    res.end();
-    console.log('[API] Response completed');
+    cline.on('close', (code) => {
+      console.log(`[API] Cline process closed with code: ${code}`);
+      res.write(`data: ${JSON.stringify({ type: 'done', model: 'cline-cli' })}\n\n`);
+      res.end();
+    });
   } catch (error) {
     console.error('[API] Error:', error);
     res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
@@ -218,8 +194,8 @@ app.get('/', (req, res) => {
   </div>
   <div class="chat-container" id="chatContainer"></div>
   <div class="input-container">
-    <textarea id="messageInput" placeholder="Écris un message..." rows="1"></textarea>
-    <button id="sendButton">Envoyer</button>
+    <textarea id="messageInput" placeholder="Type a message..." rows="1"></textarea>
+    <button id="sendButton">Send</button>
   </div>
 
   <script>
@@ -284,7 +260,7 @@ app.get('/', (req, res) => {
           }
         }
       } catch (error) {
-        assistantDiv.textContent = 'Erreur: ' + error.message;
+        assistantDiv.textContent = 'Error: ' + error.message;
         assistantDiv.style.color = '#ff6b6b';
       }
 
