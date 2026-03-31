@@ -58,6 +58,7 @@ export default function Home() {
   };
 
   const handleSubmit = async () => {
+    console.log("[Chat] handleSubmit called, input:", input);
     if (!input.trim() || isLoading) return;
 
     const userMessage: Message = { role: "user", content: input };
@@ -65,6 +66,7 @@ export default function Home() {
     setInput("");
     setIsLoading(true);
 
+    console.log("[Chat] Sending request to /api/chat");
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -100,12 +102,15 @@ export default function Home() {
 
               try {
                 const event = JSON.parse(dataStr);
+                console.log("[Chat] Received event:", event);
 
                 setMessages((prev) => {
                   const newMsgs = [...prev];
                   const lastMsg = newMsgs[newMsgs.length - 1];
+                  console.log("[Chat] Last message:", lastMsg);
 
                   if (event.type === "delta") {
+                    console.log("[Chat] Adding delta content:", event.content);
                     if (lastMsg.role === "assistant" && lastMsg.type !== "tool_call") {
                       lastMsg.content += event.content;
                     } else {
@@ -127,7 +132,7 @@ export default function Home() {
                       newMsgs[lastToolIdx].toolOutput = event.output;
                     }
                   } else if (event.type === "error") {
-                     newMsgs.push({ role: "assistant", content: `**Error**: ${event.message}` });
+                    newMsgs.push({ role: "assistant", content: `**Error**: ${event.message}` });
                   }
 
                   return newMsgs;

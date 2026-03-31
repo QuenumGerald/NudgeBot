@@ -48,7 +48,7 @@ export function EmptyState({ onSelectSuggestion }: EmptyStateProps) {
         Que puis-je faire pour toi ?
       </h2>
       <p className="text-text-2 mb-10 text-center text-sm">
-        Nudgebot est prêt. Demande-lui n'importe quoi.
+        Nudgebot est prêt. Demande-lui n&apos;importe quoi.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">

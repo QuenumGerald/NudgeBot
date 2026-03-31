@@ -30,12 +30,15 @@ export async function saveMemory(content: string, category: string = "general", 
 
 export async function getMemories(limit: number = 15): Promise<Memory[]> {
   const result = await query("SELECT * FROM memories ORDER BY importance DESC, created_at DESC LIMIT $1", [limit]);
-  return result.rows;
+  return result.rows as Memory[];
 }
 
 export async function searchMemories(searchQuery: string): Promise<Memory[]> {
-  const result = await query("SELECT * FROM memories WHERE content ILIKE $1 ORDER BY importance DESC, created_at DESC", [`%${searchQuery}%`]);
-  return result.rows;
+  const result = await query(
+    "SELECT * FROM memories WHERE content LIKE $1 ORDER BY importance DESC, created_at DESC LIMIT 10",
+    [`%${searchQuery}%`]
+  );
+  return result.rows as Memory[];
 }
 
 export async function deleteMemory(id: number): Promise<void> {
@@ -53,7 +56,7 @@ export async function getHistory(sessionId: string, limit: number = 30): Promise
     ) sub
     ORDER BY created_at ASC
   `, [sessionId, limit]);
-  return result.rows;
+  return result.rows as ConvMessage[];
 }
 
 export async function getSessions(): Promise<Session[]> {
@@ -67,7 +70,7 @@ export async function getSessions(): Promise<Session[]> {
     GROUP BY session_id
     ORDER BY last_active DESC
   `);
-  return result.rows;
+  return result.rows as Session[];
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
@@ -77,7 +80,13 @@ export async function deleteSession(sessionId: string): Promise<void> {
 export async function getStats(): Promise<{ totalMessages: number, totalMemories: number, todayMessages: number }> {
   const resultMessages = await query("SELECT COUNT(*) FROM conversations");
   const resultMemories = await query("SELECT COUNT(*) FROM memories");
-  const resultToday = await query("SELECT COUNT(*) FROM conversations WHERE created_at >= NOW() - INTERVAL '24 HOURS'");
+
+  const useSqlite = process.env.USE_SQLITE === "true";
+  const todayQuery = useSqlite
+    ? "SELECT COUNT(*) FROM conversations WHERE created_at >= datetime('now', '-24 hours')"
+    : "SELECT COUNT(*) FROM conversations WHERE created_at >= NOW() - INTERVAL '24 HOURS'";
+
+  const resultToday = await query(todayQuery);
 
   return {
     totalMessages: parseInt(resultMessages.rows[0].count, 10),

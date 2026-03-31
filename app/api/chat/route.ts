@@ -1,77 +1,83 @@
 import { NextResponse } from "next/server";
-import { saveMessage, getMemories, getHistory } from "@/lib/memory";
-import { runClineTask } from "@/lib/cline";
-import { config } from "@/lib/config";
 
-export const maxDuration = 120; // 120 seconds max duration
+export const maxDuration = 120;
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
     const { messages, sessionId, model } = await request.json();
     const userMessage = messages[messages.length - 1].content;
-    const activeModel = model || config.defaultModel;
-
-    await saveMessage(sessionId, "user", userMessage, activeModel);
-
-    const memories = await getMemories(15);
-    const history = await getHistory(sessionId, 30);
-
-    const systemContext = `Tu es Nudgebot, un assistant personnel intelligent et direct.
-Tu réponds en français par défaut.
-Tu as accès à des outils via Cline : fichiers, shell, web, GitHub, et plus.
-Utilise les outils proactivement sans demander confirmation (sauf actions destructrices).
-Mémorise automatiquement les préférences et faits importants.
-Date/heure: ${new Date().toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}
-
-## Mémoire long terme
-${memories.map((m) => `[${m.category}] ${m.content}`).join('\n') || 'Aucune mémoire'}
-
-## Historique
-${history.map((h) => `${h.role}: ${h.content.slice(0, 300)}`).join('\n') || 'Nouvelle conversation'}
-
-## Tâche
-${userMessage}`;
+    const activeModel = model || "qwen/qwen3.6-plus-preview:free";
+    const apiKey = process.env.OPENROUTER_API_KEY || "";
 
     const stream = new ReadableStream({
       async start(controller) {
-        let assistantFullContent = "";
+        try {
+          const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": "https://nudgebot.app",
+              "X-Title": "Nudgebot",
+            },
+            body: JSON.stringify({
+              model: activeModel,
+              messages: [{ role: "user", content: userMessage }],
+              stream: true,
+            }),
+          });
 
-        await runClineTask(systemContext, activeModel, (event) => {
-          if (event.type === "text") {
-            assistantFullContent += event.content;
-            controller.enqueue(
-              new TextEncoder().encode(`data: ${JSON.stringify({ type: "delta", content: event.content })}\n\n`)
-            );
-          } else if (event.type === "tool_start") {
-            controller.enqueue(
-              new TextEncoder().encode(
-                `data: ${JSON.stringify({ type: "tool_start", name: event.name, input: event.input })}\n\n`
-              )
-            );
-          } else if (event.type === "tool_result") {
-            controller.enqueue(
-              new TextEncoder().encode(
-                `data: ${JSON.stringify({ type: "tool_result", name: event.name, output: event.output })}\n\n`
-              )
-            );
-          } else if (event.type === "error") {
-            controller.enqueue(
-              new TextEncoder().encode(`data: ${JSON.stringify({ type: "error", message: event.message })}\n\n`)
-            );
-          } else if (event.type === "done") {
-            saveMessage(sessionId, "assistant", assistantFullContent, activeModel)
-              .then(() => {
-                controller.enqueue(
-                  new TextEncoder().encode(`data: ${JSON.stringify({ type: "done", model: activeModel })}\n\n`)
-                );
-                controller.close();
-              })
-              .catch((err) => {
-                controller.error(err);
-              });
+          if (!response.ok) {
+            throw new Error(`API Error: ${response.status}`);
           }
-        });
+
+          const reader = response.body?.getReader();
+          if (!reader) {
+            throw new Error("No response body");
+          }
+
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (!line.trim() || !line.startsWith("data: ")) continue;
+              const data = line.slice(6);
+              if (data === "[DONE]") continue;
+
+              try {
+                const parsed = JSON.parse(data);
+                const content = parsed.choices?.[0]?.delta?.content;
+                if (content) {
+                  controller.enqueue(
+                    new TextEncoder().encode(`data: ${JSON.stringify({ type: "delta", content })}\n\n`)
+                  );
+                }
+              } catch (e) {
+                // Ignore parse errors
+              }
+            }
+          }
+
+          controller.enqueue(
+            new TextEncoder().encode(`data: ${JSON.stringify({ type: "done", model: activeModel })}\n\n`)
+          );
+          controller.close();
+        } catch (error: any) {
+          console.error("[API] Error:", error);
+          controller.enqueue(
+            new TextEncoder().encode(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`)
+          );
+          controller.close();
+        }
       },
     });
 
@@ -83,6 +89,7 @@ ${userMessage}`;
       },
     });
   } catch (error) {
+    console.error("[API] Fatal error:", error);
     return NextResponse.json({ error: "Failed to process chat" }, { status: 500 });
   }
 }

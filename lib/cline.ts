@@ -1,7 +1,4 @@
-import { spawn } from "child_process";
-import fs from "fs/promises";
-import path from "path";
-import { config, clineStateDir, workspaceDir } from "./config";
+import { config } from "./config";
 
 export type ClineEvent =
   | { type: "text"; content: string }
@@ -10,137 +7,87 @@ export type ClineEvent =
   | { type: "done" }
   | { type: "error"; message: string };
 
-export async function setupCline(): Promise<void> {
-  await fs.mkdir(config.dataDir, { recursive: true });
-  await fs.mkdir(clineStateDir, { recursive: true });
-  await fs.mkdir(workspaceDir, { recursive: true });
-
-  const globalStateFile = path.join(clineStateDir, "globalState.json");
-  const secretsFile = path.join(clineStateDir, "secrets.json");
-
-  try {
-    let globalState = {};
-    try {
-      const globalStateContent = await fs.readFile(globalStateFile, "utf-8");
-      globalState = JSON.parse(globalStateContent);
-    } catch {
-      // Ignored if file doesn't exist
-    }
-
-    let secrets = {};
-    try {
-      const secretsContent = await fs.readFile(secretsFile, "utf-8");
-      secrets = JSON.parse(secretsContent);
-    } catch {
-      // Ignored if file doesn't exist
-    }
-
-    const newGlobalState = {
-      ...globalState,
-      apiProvider: "openrouter",
-      openRouterModelId: config.defaultModel,
-    };
-
-    const newSecrets = {
-      ...secrets,
-      openRouterApiKey: config.openrouterKey,
-    };
-
-    await fs.writeFile(globalStateFile, JSON.stringify(newGlobalState, null, 2));
-    await fs.writeFile(secretsFile, JSON.stringify(newSecrets, null, 2));
-  } catch (error) {
-    console.error("Error setting up Cline state files:", error);
-  }
-}
-
-function parseClineEvent(raw: any): ClineEvent {
-  if (!raw || typeof raw !== "object") {
-    return { type: "text", content: JSON.stringify(raw) };
-  }
-
-  if (raw.type === "say" && raw.say === "text") {
-    return { type: "text", content: raw.text || "" };
-  }
-
-  if (raw.type === "say" && raw.say === "tool") {
-    return { type: "tool_start", name: raw.tool, input: raw.text || "" };
-  }
-
-  if (raw.type === "say" && raw.say === "completion_result") {
-    return { type: "text", content: raw.text || "" };
-  }
-
-  if (raw.type === "completion_result") {
-      return { type: "text", content: raw.text || "" };
-  }
-
-  // Not handled yet, just send text
-  return { type: "text", content: raw.text || JSON.stringify(raw) };
-}
-
 export async function runClineTask(
   prompt: string,
   model: string,
   onEvent: (event: ClineEvent) => void,
   signal?: AbortSignal
 ): Promise<void> {
-  await setupCline();
+  console.log("[API] Starting task with model:", model);
 
-  const child = spawn(
-    "cline",
-    [
-      "-y",
-      "--json",
-      "--model",
-      model,
-      "--api-key",
-      config.openrouterKey,
-      "--api-provider",
-      "openrouter",
-      "--state-dir",
-      clineStateDir,
-      prompt,
-    ],
-    {
-      cwd: workspaceDir,
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${config.openrouterKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://nudgebot.app",
+        "X-Title": "Nudgebot",
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        stream: true,
+      }),
       signal,
-    }
-  );
+    });
 
-  child.on("error", (error: any) => {
-    if (error.code === "ENOENT") {
-      onEvent({ type: "error", message: "Cline CLI not found. Run: npm install -g cline" });
-    } else {
-      onEvent({ type: "error", message: error.message });
+    if (!response.ok) {
+      const error = await response.text();
+      console.error("[API] Error:", error);
+      onEvent({ type: "error", message: `API Error: ${error}` });
+      onEvent({ type: "done" });
+      return;
     }
-  });
 
-  child.stdout.on("data", (data) => {
-    const lines = data.toString().split("\n");
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const parsed = JSON.parse(line);
-        onEvent(parseClineEvent(parsed));
-      } catch {
-        // Not a JSON line, assume raw text
-        onEvent({ type: "text", content: line });
+    const reader = response.body?.getReader();
+    if (!reader) {
+      onEvent({ type: "error", message: "No response body" });
+      onEvent({ type: "done" });
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim() || !line.startsWith("data: ")) continue;
+
+        const data = line.slice(6);
+        if (data === "[DONE]") continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (content) {
+            onEvent({ type: "text", content });
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
       }
     }
-  });
 
-  child.stderr.on("data", (data) => {
-    const message = data.toString().trim();
-    if (message) {
-      // Just print it out, but some of it is useful for the client
-      console.warn("Cline stderr:", message);
+    console.log("[API] Task completed");
+    onEvent({ type: "done" });
+  } catch (error: any) {
+    console.error("[API] Fatal error:", error);
+    if (error.name !== "AbortError") {
+      onEvent({ type: "error", message: error.message || "Unknown error" });
     }
-  });
-
-  return new Promise<void>((resolve) => {
-    child.on("close", (code) => {
-      onEvent({ type: "done" });
-      resolve();
-    });
-  });
+    onEvent({ type: "done" });
+  }
 }
