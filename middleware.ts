@@ -9,7 +9,7 @@ export function middleware(request: NextRequest) {
   }
 
   const sessionCookie = request.cookies.get("nudgebot-session");
-  const secret = process.env.APP_SECRET || "dev-secret";
+  const secret = process.env.APP_SECRET;
 
   if (!sessionCookie || sessionCookie.value !== secret) {
     const url = request.nextUrl.clone();
