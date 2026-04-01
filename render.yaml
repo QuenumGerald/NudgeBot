@@ -1,20 +1,20 @@
 services:
   - type: web
-    name: nudgebot-api
+    name: nudgebot
     env: node
     plan: starter
-    buildCommand: npm install
-    startCommand: node server-express.js
+    buildCommand: npm install && npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
-      - key: API_ONLY
-        value: "true"
       - key: OPENROUTER_API_KEY
         description: Your OpenRouter API Key (sk-or-...)
-      - key: DEEPSEEK_API_KEY
-        description: Your DeepSeek API Key (sk-...)
+      - key: APP_PASSWORD
+        description: Password used for /login access
+      - key: APP_SECRET
+        description: Secret token stored in auth cookie
       - key: DEFAULT_MODEL
-        value: "deepseek/deepseek-chat"
-      - key: PORT
-        value: "10000"
+        value: "deepseek/deepseek-chat-v3-0324:free"
+      - key: USE_SQLITE
+        value: "true"
