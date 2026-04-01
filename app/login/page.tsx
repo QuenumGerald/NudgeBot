@@ -2,10 +2,10 @@
 
 import { Suspense, useState, useTransition } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card } from "@/components/ui/card-simple";
+import { Input } from "@/components/ui/input-simple";
+import { Button } from "@/components/ui/button-simple";
+import { Alert, AlertDescription } from "@/components/ui/alert-simple";
 import { BrainCircuit } from "lucide-react";
 
 function LoginForm() {
