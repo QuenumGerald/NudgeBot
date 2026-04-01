@@ -80,16 +80,21 @@ app.post('/api/chat', async (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    // Call Cline CLI task
+    // Call Cline CLI task in isolated workspace
+    const workspacePath = path.join(process.cwd(), 'workspace');
+    if (!fs.existsSync(workspacePath)) fs.mkdirSync(workspacePath, { recursive: true });
+
     const cline = spawn('npx', [
       'cline',
       'task',
       userMessage,
       '--config', path.join(process.cwd(), 'data', '.cline'),
-      '--yolo',        // Auto-approve actions
-      '--auto-condense', // Compress context when needed
-      '--json'         // Use JSON output for structured data
-    ]);
+      '--yolo',
+      '--auto-condense',
+      '--json'
+    ], {
+      cwd: workspacePath
+    });
 
     let stdoutBuffer = '';
     let lastTextLength = 0;
