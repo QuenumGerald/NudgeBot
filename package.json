@@ -21,7 +21,7 @@
     "@tailwindcss/oxide-linux-x64-gnu": "^4.2.2",
     "better-sqlite3": "^12.8.0",
     "class-variance-authority": "latest",
-    "cline": "^2.11.0",
+    "cline": "2.11.0",
     "clsx": "latest",
     "cors": "^2.8.6",
     "date-fns": "^4.1.0",
