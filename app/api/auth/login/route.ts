@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 
 const config = {
   appPassword: process.env.APP_PASSWORD || "admin",
-  appSecret: process.env.APP_SECRET || "nudgebot-secret"
+  appSecret: process.env.APP_SECRET || "nudgebot-secret-2024"
 };
 
 export async function POST(request: Request) {
