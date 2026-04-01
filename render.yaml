@@ -2,14 +2,14 @@ services:
   - type: web
     name: nudgebot-api
     env: node
-    plan: free # or starter
-    buildCommand: npm install && npm run build
+    plan: starter
+    buildCommand: npm install
     startCommand: node server-express.js
     envVars:
       - key: NODE_ENV
         value: production
       - key: API_ONLY
-        value: "false" # In 1-click mode, we serve both Front and Back on Render
+        value: "true"
       - key: OPENROUTER_API_KEY
         description: Your OpenRouter API Key (sk-or-...)
       - key: DEEPSEEK_API_KEY
