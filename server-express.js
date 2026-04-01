@@ -3,10 +3,25 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const next = require('next');
 require('dotenv').config();
+
+const dev = process.env.NODE_ENV !== 'production';
+const nextApp = next({ dev, dir: process.cwd() });
+const handle = nextApp.getRequestHandler();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Keep the process alive and log errors instead of crashing
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled rejection:', reason);
+});
+// Keepalive: prevents Node from exiting when event loop is empty
+setInterval(() => { }, 1000 * 60 * 60);
 
 // Auto-configure Cline on startup
 function setupCline() {
@@ -71,219 +86,107 @@ app.post('/api/chat', async (req, res) => {
       'task',
       userMessage,
       '--config', path.join(process.cwd(), 'data', '.cline'),
-      '--yolo', // Auto-approve actions as configured in globalState
-      '--auto-condense' // Enable context compression for large tasks
+      '--yolo',        // Auto-approve actions
+      '--auto-condense', // Compress context when needed
+      '--json'         // Use JSON output for structured data
     ]);
 
+    let stdoutBuffer = '';
+    let lastTextLength = 0;
+
+    // Helper to parse and dispatch a single JSON event line
+    function processEvent(line) {
+      if (!line.trim()) return;
+      try {
+        const event = JSON.parse(line);
+        if (event.type === 'say') {
+          if (event.say === 'completion_result') {
+            const cleanText = (event.text || '')
+              .replace(/<task_progress>[\s\S]*?(?:<\/task_progress>|$)/g, '')
+              .trim();
+            if (cleanText) {
+              res.write(`data: ${JSON.stringify({ type: 'replace', content: cleanText })}\n\n`);
+            }
+          } else if (event.say === 'text') {
+            const preview = (event.text || '').replace(/<task_progress>[\s\S]*?(?:<\/task_progress>|$)/g, '').trim();
+            if (preview) {
+              res.write(`data: ${JSON.stringify({ type: 'thinking', content: '💬 ' + preview.substring(0, 80) + (preview.length > 80 ? '...' : '') })}\n\n`);
+            }
+          } else if (event.say === 'api_req_started') {
+            res.write(`data: ${JSON.stringify({ type: 'thinking', content: '🤔 Thinking...' })}\n\n`);
+          } else if (event.say === 'task_progress') {
+            res.write(`data: ${JSON.stringify({ type: 'thinking', content: '⚙️ ' + (event.text || 'Working...') })}\n\n`);
+          } else if (event.say === 'error') {
+            res.write(`data: ${JSON.stringify({ type: 'thinking', content: '❌ Error: ' + event.text })}\n\n`);
+          }
+        } else if (event.type === 'ask') {
+          if (event.ask === 'tool_call' || event.ask === 'command') {
+            try {
+              const toolData = JSON.parse(event.text || '{}');
+              res.write(`data: ${JSON.stringify({ type: 'thinking', content: '🛠️ Tool: ' + (toolData.tool || event.ask) })}\n\n`);
+            } catch (e) {
+              res.write(`data: ${JSON.stringify({ type: 'thinking', content: '🛠️ Using tool...' })}\n\n`);
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore invalid JSON lines (npm/npx noise)
+      }
+    }
+
     cline.stdout.on('data', (data) => {
-      const content = data.toString();
-      res.write(`data: ${JSON.stringify({ type: 'delta', content })}\n\n`);
+      stdoutBuffer += data.toString();
+      const lines = stdoutBuffer.split('\n');
+      stdoutBuffer = lines.pop() || '';
+      for (const line of lines) processEvent(line);
     });
 
     cline.stderr.on('data', (data) => {
-      console.error(`[Cline Error] ${data}`);
+      const errLine = data.toString().trim();
+      if (errLine) console.error(`[Cline] ${errLine}`);
     });
 
     cline.on('close', (code) => {
+      // Flush any remaining buffered line (completion_result has no trailing newline)
+      if (stdoutBuffer.trim()) processEvent(stdoutBuffer);
+
       console.log(`[API] Cline process closed with code: ${code}`);
       res.write(`data: ${JSON.stringify({ type: 'done', model: 'cline-cli' })}\n\n`);
       res.end();
     });
   } catch (error) {
     console.error('[API] Error:', error);
-    res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })} \n\n`);
     res.end();
   }
 });
 
-// Simple HTML page
-app.get('/', (req, res) => {
-  res.send(`
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NudgeBot - Chat</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #0f0f0f;
-      color: #e0e0e0;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    .header {
-      background: #1a1a1a;
-      padding: 1rem 2rem;
-      border-bottom: 1px solid #333;
-    }
-    .header h1 {
-      font-size: 1.5rem;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .chat-container {
-      flex: 1;
-      overflow-y: auto;
-      padding: 2rem;
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-    }
-    .message {
-      max-width: 70%;
-      padding: 1rem;
-      border-radius: 1rem;
-      line-height: 1.5;
-    }
-    .user {
-      align-self: flex-end;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-    }
-    .assistant {
-      align-self: flex-start;
-      background: #1a1a1a;
-      border: 1px solid #333;
-    }
-    .input-container {
-      padding: 1.5rem 2rem;
-      background: #1a1a1a;
-      border-top: 1px solid #333;
-      display: flex;
-      gap: 1rem;
-    }
-    #messageInput {
-      flex: 1;
-      padding: 1rem;
-      background: #0f0f0f;
-      border: 1px solid #333;
-      border-radius: 0.5rem;
-      color: #e0e0e0;
-      font-size: 1rem;
-      resize: none;
-    }
-    #sendButton {
-      padding: 1rem 2rem;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      border-radius: 0.5rem;
-      cursor: pointer;
-      font-weight: 600;
-      transition: opacity 0.2s;
-    }
-    #sendButton:hover:not(:disabled) { opacity: 0.9; }
-    #sendButton:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .loading {
-      color: #667eea;
-      font-style: italic;
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1>🤖 NudgeBot</h1>
-  </div>
-  <div class="chat-container" id="chatContainer"></div>
-  <div class="input-container">
-    <textarea id="messageInput" placeholder="Type a message..." rows="1"></textarea>
-    <button id="sendButton">Send</button>
-  </div>
-
-  <script>
-    const chatContainer = document.getElementById('chatContainer');
-    const messageInput = document.getElementById('messageInput');
-    const sendButton = document.getElementById('sendButton');
-
-    function addMessage(role, content) {
-      const div = document.createElement('div');
-      div.className = \`message \${role}\`;
-      div.textContent = content;
-      chatContainer.appendChild(div);
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-      return div;
-    }
-
-    async function sendMessage() {
-      const message = messageInput.value.trim();
-      if (!message) return;
-
-      addMessage('user', message);
-      messageInput.value = '';
-      sendButton.disabled = true;
-
-      const assistantDiv = addMessage('assistant', '');
-      let fullResponse = '';
-
+// Delegate all other routes to Next.js
+nextApp.prepare()
+  .then(() => {
+    app.use(async (req, res) => {
       try {
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: [{ role: 'user', content: message }],
-            model: 'qwen/qwen3.6-plus-preview:free'
-          })
-        });
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              try {
-                const event = JSON.parse(data);
-                if (event.type === 'delta') {
-                  fullResponse += event.content;
-                  assistantDiv.textContent = fullResponse;
-                  chatContainer.scrollTop = chatContainer.scrollHeight;
-                }
-              } catch (e) {}
-            }
-          }
-        }
-      } catch (error) {
-        assistantDiv.textContent = 'Error: ' + error.message;
-        assistantDiv.style.color = '#ff6b6b';
-      }
-
-      sendButton.disabled = false;
-      messageInput.focus();
-    }
-
-    sendButton.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
+        await handle(req, res);
+      } catch (err) {
+        console.error('[Next.js] Request error:', err);
+        res.status(500).end('Internal Server Error');
       }
     });
 
-    messageInput.focus();
-  </script>
-</body>
-</html>
-  `);
-});
+    const server = app.listen(PORT, () => {
+      console.log(`✅ NudgeBot server running on http://localhost:${PORT}`);
+      console.log(`📝 Model: ${process.env.DEFAULT_MODEL || 'deepseek/deepseek-chat'}`);
+    });
 
-app.listen(PORT, () => {
-  console.log(`✅ NudgeBot server running on http://localhost:${PORT}`);
-  console.log(`📝 Model: ${process.env.DEFAULT_MODEL || 'qwen/qwen3.6-plus-preview:free'}`);
-});
+    server.on('error', (err) => {
+      console.error('[SERVER] Error:', err);
+    });
+  })
+  .catch((err) => {
+    console.error('[Next.js] Failed to prepare:', err);
+    // Still start the server for API-only mode if Next.js fails
+    const server = app.listen(PORT, () => {
+      console.log(`⚠️  NudgeBot API running on http://localhost:${PORT} (Next.js failed to load)`);
+    });
+    server.on('error', (err) => console.error('[SERVER] Error:', err));
+  });

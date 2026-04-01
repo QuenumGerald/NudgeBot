@@ -1,4 +1,4 @@
-# Nudgebot
+# NudgeBot
 
 ## Prerequisites
 - Node 18+ and npm (install dependencies with `npm install`).

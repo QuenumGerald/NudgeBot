@@ -107,14 +107,24 @@ export default function Home() {
                 setMessages((prev) => {
                   const newMsgs = [...prev];
                   const lastMsg = newMsgs[newMsgs.length - 1];
-                  console.log("[Chat] Last message:", lastMsg);
 
-                  if (event.type === "delta") {
-                    console.log("[Chat] Adding delta content:", event.content);
+                  if (event.type === "replace") {
+                    // Final answer from Cline — replace the assistant bubble entirely
+                    if (lastMsg.role === "assistant" && lastMsg.type !== "tool_call") {
+                      lastMsg.content = event.content;
+                    } else {
+                      newMsgs.push({ role: "assistant", content: event.content });
+                    }
+                  } else if (event.type === "delta") {
                     if (lastMsg.role === "assistant" && lastMsg.type !== "tool_call") {
                       lastMsg.content += event.content;
                     } else {
                       newMsgs.push({ role: "assistant", content: event.content });
+                    }
+                  } else if (event.type === "thinking") {
+                    // Update the assistant bubble with current thinking status
+                    if (lastMsg.role === "assistant" && lastMsg.type !== "tool_call") {
+                      lastMsg.content = event.content;
                     }
                   } else if (event.type === "tool_start") {
                     newMsgs.push({

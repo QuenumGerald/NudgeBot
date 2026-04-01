@@ -3,7 +3,7 @@
 echo "Starting NudgeBot server..."
 
 while true; do
-    npm run dev
-    echo "Server crashed, restarting in 2 seconds..."
+    node server-express.js
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Server stopped (exit code $?), restarting in 2 seconds..."
     sleep 2
 done
