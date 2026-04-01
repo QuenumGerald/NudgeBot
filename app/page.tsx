@@ -1,31 +1,14 @@
 "use client";
 
-import { useState, useCallback, useRef, FormEvent, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sidebar } from "@/components/sidebar/sidebar";
-import { MessageList } from "@/components/chat/message-list";
-import { ChatInput } from "@/components/chat/chat-input";
-import { Message } from "@/components/chat/message-item";
-import { Brain, LogOut } from "lucide-react";
-
-const MODELS = {
-  "deepseek/deepseek-chat-v3-0324:free": "Deepseek V3 (gratuit)",
-  "deepseek/deepseek-r1:free": "Deepseek R1 - Raisonnement (gratuit)",
-  "google/gemini-2.0-flash-exp:free": "Gemini 2.0 Flash (gratuit)",
-  "deepseek/deepseek-chat-v3-0324": "Deepseek V3 ($0.27/M)",
-  "deepseek/deepseek-r1": "Deepseek R1 ($0.55/M)",
-  "google/gemini-2.5-flash-preview": "Gemini 2.5 Flash ($0.15/M)",
-  "anthropic/claude-haiku-4-5": "Claude Haiku ($0.80/M)",
-  "anthropic/claude-sonnet-4-5": "Claude Sonnet ($3/M)",
-} as const;
+import { Brain, LogOut, MessageSquare } from "lucide-react";
 
 export default function Home() {
   const router = useRouter();
-  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [sessionId, setSessionId] = useState<string>(() => Math.random().toString(36).substring(2, 15));
-  const [model, setModel] = useState<keyof typeof MODELS>("deepseek/deepseek-chat-v3-0324:free");
+  const [messages, setMessages] = useState<Array<{role: string, content: string}>>([]);
 
   const handleLogout = async () => {
     await fetch("/api/auth/login", {
@@ -36,46 +19,22 @@ export default function Home() {
     router.push("/login");
   };
 
-  const handleSelectSession = (id: string | null) => {
-    if (id) {
-      setSessionId(id);
-      // Fetch history for selected session
-      // For simplicity, we just clear messages and let the next message load history via backend
-      // Actually, ideally we'd fetch it, but standard flow assumes state reset
-      setMessages([]);
-    } else {
-      setSessionId(Math.random().toString(36).substring(2, 15));
-      setMessages([]);
-    }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-  };
-
-  const handleSelectSuggestion = (text: string) => {
-    setInput(text);
-  };
-
   const handleSubmit = async () => {
-    console.log("[Chat] handleSubmit called, input:", input);
     if (!input.trim() || isLoading) return;
 
-    const userMessage: Message = { role: "user", content: input };
-    setMessages((prev) => [...prev, userMessage]);
+    const userMessage = { role: "user", content: input };
+    setMessages(prev => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || ""; // Put your Render URL here in production
-    console.log(`[Chat] Sending request to ${apiUrl}/api/chat`);
     try {
-      const response = await fetch(`${apiUrl}/api/chat`, {
+      const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [...messages, userMessage],
-          sessionId,
-          model,
+          sessionId: "simple-session",
+          model: "deepseek/deepseek-chat-v3-0324:free",
         }),
       });
 
@@ -86,7 +45,7 @@ export default function Home() {
       let done = false;
       let buffer = "";
 
-      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+      setMessages(prev => [...prev, { role: "assistant", content: "" }]);
 
       while (!done) {
         const { value, done: readerDone } = await reader.read();
@@ -103,53 +62,23 @@ export default function Home() {
 
               try {
                 const event = JSON.parse(dataStr);
-                console.log("[Chat] Received event:", event);
 
-                setMessages((prev) => {
+                setMessages(prev => {
                   const newMsgs = [...prev];
                   const lastMsg = newMsgs[newMsgs.length - 1];
 
-                  if (event.type === "replace") {
-                    // Final answer from Cline — replace the assistant bubble entirely
-                    if (lastMsg.role === "assistant" && lastMsg.type !== "tool_call") {
-                      lastMsg.content = event.content;
-                    } else {
-                      newMsgs.push({ role: "assistant", content: event.content });
-                    }
-                  } else if (event.type === "delta") {
-                    if (lastMsg.role === "assistant" && lastMsg.type !== "tool_call") {
-                      lastMsg.content += event.content;
-                    } else {
-                      newMsgs.push({ role: "assistant", content: event.content });
-                    }
-                  } else if (event.type === "thinking") {
-                    // Update the assistant bubble with current thinking status
-                    if (lastMsg.role === "assistant" && lastMsg.type !== "tool_call") {
-                      lastMsg.content = event.content;
-                    }
-                  } else if (event.type === "tool_start") {
-                    newMsgs.push({
-                      role: "assistant",
-                      content: "",
-                      type: "tool_call",
-                      toolName: event.name,
-                      toolInput: event.input,
-                    });
-                  } else if (event.type === "tool_result") {
-                    const lastToolIdx = newMsgs.findLastIndex(
-                      (m) => m.type === "tool_call" && m.toolName === event.name && m.toolOutput === undefined
-                    );
-                    if (lastToolIdx !== -1) {
-                      newMsgs[lastToolIdx].toolOutput = event.output;
+                  if (event.type === "replace" || event.type === "delta") {
+                    if (lastMsg.role === "assistant") {
+                      lastMsg.content += event.content || "";
                     }
                   } else if (event.type === "error") {
-                    newMsgs.push({ role: "assistant", content: `**Error**: ${event.message}` });
+                    lastMsg.content = `**Error**: ${event.message}`;
                   }
 
                   return newMsgs;
                 });
               } catch (e) {
-                // Ignore parse errors for incomplete chunks
+                // Ignore parse errors
               }
             }
           }
@@ -157,7 +86,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error("Chat error:", error);
-      setMessages((prev) => [
+      setMessages(prev => [
         ...prev,
         { role: "assistant", content: "Une erreur est survenue lors de la communication avec l'assistant." },
       ]);
@@ -166,65 +95,98 @@ export default function Home() {
     }
   };
 
-
   return (
-    <div className="grid grid-cols-[260px_1fr] h-screen overflow-hidden bg-bg">
-      <Sidebar
-        currentSessionId={sessionId}
-        onSelectSession={handleSelectSession}
-        onLogout={handleLogout}
-      />
-
-      <div className="flex flex-col h-full overflow-hidden relative">
-        <header className="h-14 border-b border-border flex items-center justify-between px-4 bg-bg-2 z-10 shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-green"></span>
-            </span>
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value as any)}
-              className="bg-bg-3 border border-border text-sm rounded-md px-2 py-1 text-text focus:outline-none focus:ring-1 focus:ring-accent max-w-[200px] truncate"
-            >
-              {Object.entries(MODELS).map(([key, name]) => (
-                <option key={key} value={key}>
-                  {name}
-                </option>
-              ))}
-            </select>
+    <div className="min-h-screen bg-gray-50">
+      <header className="h-16 border-b border-gray-200 bg-white flex items-center justify-between px-6">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+            <Brain size={20} className="text-white" />
           </div>
-
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent/10 border border-accent/20 text-accent text-xs font-semibold">
-              <Brain size={14} />
-              Mémoire
-            </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-bg-3 border border-border text-text-3 hover:text-red hover:bg-red/10 transition-colors text-xs font-semibold"
-            >
-              <LogOut size={14} />
-              Déco
-            </button>
-          </div>
-        </header>
-
-        <MessageList
-          messages={messages}
-          isLoading={isLoading}
-          onSelectSuggestion={handleSelectSuggestion}
-        />
-
-        <div className="mt-auto shrink-0 z-10">
-          <ChatInput
-            input={input}
-            isLoading={isLoading}
-            onInputChange={handleInputChange}
-            onSubmit={handleSubmit}
-          />
+          <h1 className="text-xl font-bold text-gray-800">Nudgebot</h1>
         </div>
-      </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-50 border border-blue-200 text-blue-600 text-sm font-semibold">
+            <Brain size={14} />
+            Mémoire Active
+          </div>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-gray-100 border border-gray-200 text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors text-sm font-semibold"
+          >
+            <LogOut size={14} />
+            Déconnexion
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-4xl mx-auto p-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-[600px] flex flex-col">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                <MessageSquare size={48} className="mb-4 text-gray-300" />
+                <p className="text-lg font-medium">Bienvenue sur Nudgebot</p>
+                <p className="text-sm mt-2">Comment puis-je vous aider aujourd'hui ?</p>
+              </div>
+            ) : (
+              messages.map((message, index) => (
+                <div
+                  key={index}
+                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                      message.role === "user"
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-100 text-gray-800"
+                    }`}
+                  >
+                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  </div>
+                </div>
+              ))
+            )}
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-gray-100 rounded-lg px-4 py-2">
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }}></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-gray-200 p-4">
+            <div className="flex gap-2">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit();
+                  }
+                }}
+                placeholder="Tapez votre message..."
+                className="flex-1 resize-none border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                rows={2}
+                disabled={isLoading}
+              />
+              <button
+                onClick={handleSubmit}
+                disabled={!input.trim() || isLoading}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+              >
+                Envoyer
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }
