@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-const config = {
-  appPassword: process.env.APP_PASSWORD || "admin",
-  appSecret: process.env.APP_SECRET || "nudgebot-secret-2024"
-};
-
 export async function POST(request: Request) {
   try {
+    // Vérification obligatoire des variables d'environnement
+    const appPassword = process.env.APP_PASSWORD;
+    const appSecret = process.env.APP_SECRET;
+
+    if (!appPassword || !appSecret) {
+      return NextResponse.json({
+        ok: false,
+        error: "Configuration serveur incorrecte"
+      }, { status: 500 });
+    }
+
     const body = await request.json();
 
     if (body.action === "logout") {
@@ -16,9 +22,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    if (body.password === config.appPassword) {
+    if (body.password === appPassword) {
       const c = await cookies();
-      c.set("nudgebot-session", config.appSecret, {
+      c.set("nudgebot-session", appSecret, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
