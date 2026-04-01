@@ -1,45 +1,20 @@
 services:
   - type: web
-    name: nudgebot
-    runtime: node
-    plan: starter
-    buildCommand: npm install && npm install -g cline && npm run build
-    startCommand: npm start
-    disk:
-      name: nudgebot-data
-      mountPath: /var/data
-      sizeGB: 5
+    name: nudgebot-api
+    env: node
+    plan: free # or starter
+    buildCommand: npm install && npm run build
+    startCommand: node server-express.js
     envVars:
       - key: NODE_ENV
         value: production
-      - key: RENDER
-        value: "true"
-      - key: DATA_DIR
-        value: /var/data
-      - key: DATABASE_URL
-        fromDatabase:
-          name: nudgebot-db
-          property: connectionString
+      - key: API_ONLY
+        value: "false" # In 1-click mode, we serve both Front and Back on Render
       - key: OPENROUTER_API_KEY
-        sync: false
+        description: Your OpenRouter API Key (sk-or-...)
+      - key: DEEPSEEK_API_KEY
+        description: Your DeepSeek API Key (sk-...)
       - key: DEFAULT_MODEL
-        value: deepseek/deepseek-chat-v3-0324:free
-      - key: APP_PASSWORD
-        sync: false
-      - key: APP_SECRET
-        generateValue: true
-      - key: NEXT_PUBLIC_APP_NAME
-        value: Nudgebot
-      - key: GITHUB_TOKEN
-        sync: false
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: GOOGLE_CLIENT_SECRET
-        sync: false
-      - key: GOOGLE_REFRESH_TOKEN
-        sync: false
-
-databases:
-  - name: nudgebot-db
-    databaseName: nudgebot
-    plan: free
+        value: "deepseek/deepseek-chat"
+      - key: PORT
+        value: "10000"

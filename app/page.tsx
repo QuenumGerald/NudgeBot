@@ -66,9 +66,10 @@ export default function Home() {
     setInput("");
     setIsLoading(true);
 
-    console.log("[Chat] Sending request to /api/chat");
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || ""; // Put your Render URL here in production
+    console.log(`[Chat] Sending request to ${apiUrl}/api/chat`);
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch(`${apiUrl}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

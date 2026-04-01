@@ -7,11 +7,22 @@ const next = require('next');
 require('dotenv').config();
 
 const dev = process.env.NODE_ENV !== 'production';
-const nextApp = next({ dev, dir: process.cwd() });
-const handle = nextApp.getRequestHandler();
+const API_ONLY = process.env.API_ONLY === 'true'; // Set to true for Render deployment
+
+const nextApp = !API_ONLY ? next({ dev, dir: process.cwd() }) : null;
+const handle = nextApp ? nextApp.getRequestHandler() : null;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Enable CORS for Netlify
+app.use(cors({
+  origin: '*', // Allow all origins for testing, we can restrict to netlify.app later
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+app.use(express.json());
 
 // Keep the process alive and log errors instead of crashing
 process.on('uncaughtException', (err) => {
@@ -166,32 +177,35 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// Delegate all other routes to Next.js
-nextApp.prepare()
-  .then(() => {
-    app.use(async (req, res) => {
-      try {
-        await handle(req, res);
-      } catch (err) {
-        console.error('[Next.js] Request error:', err);
-        res.status(500).end('Internal Server Error');
-      }
-    });
-
-    const server = app.listen(PORT, () => {
-      console.log(`✅ NudgeBot server running on http://localhost:${PORT}`);
-      console.log(`📝 Model: ${process.env.DEFAULT_MODEL || 'deepseek/deepseek-chat'}`);
-    });
-
-    server.on('error', (err) => {
-      console.error('[SERVER] Error:', err);
-    });
-  })
-  .catch((err) => {
-    console.error('[Next.js] Failed to prepare:', err);
-    // Still start the server for API-only mode if Next.js fails
-    const server = app.listen(PORT, () => {
-      console.log(`⚠️  NudgeBot API running on http://localhost:${PORT} (Next.js failed to load)`);
-    });
-    server.on('error', (err) => console.error('[SERVER] Error:', err));
+// Deployment logic: either Next.js Custom Server (Local) or API-Only (Render)
+if (API_ONLY) {
+  // --- Render Mode (API ONLY) ---
+  const server = app.listen(PORT, () => {
+    console.log(`🚀 NudgeBot API STANDALONE running on port ${PORT}`);
+    console.log(`📝 Model: ${process.env.DEFAULT_MODEL || 'deepseek/deepseek-chat'}`);
   });
+  server.on('error', (err) => console.error('[SERVER] Error:', err));
+} else if (nextApp) {
+  // --- Local Mode (Hybrid Server) ---
+  nextApp.prepare()
+    .then(() => {
+      app.use(async (req, res) => {
+        try {
+          await handle(req, res);
+        } catch (err) {
+          console.error('[Next.js] Request error:', err);
+          res.status(500).end('Internal Server Error');
+        }
+      });
+
+      const server = app.listen(PORT, () => {
+        console.log(`✅ NudgeBot Hybrid server running on http://localhost:${PORT}`);
+      });
+
+      server.on('error', (err) => console.error('[SERVER] Error:', err));
+    })
+    .catch((err) => {
+      console.error('[Next.js] Failed to prepare:', err);
+      app.listen(PORT, () => console.log(`⚠️  NudgeBot API-Safe (port ${PORT})`));
+    });
+}
