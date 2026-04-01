@@ -1,47 +1,36 @@
 # ✨ NudgeBot
 
-Un agent autonome puissant (Cline CLI) fusionné avec une interface Next.js moderne. 
+Agent autonome puissant avec API REST pour déploiement sur Render.
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/QuenumGerald/NudgeBot)
+## 🚀 Déploiement 1-Clic sur Render
 
-## 🚀 Installation 1-Clic
-L'installation est ultra simple :
-1. Cliquez sur le bouton **Deploy to Render** ci-dessus.
-2. Saisissez vos clés API (OpenRouter ou DeepSeek).
-3. Attendez 2 minutes... **Votre NudgeBot est en ligne !**
-
-## 🎯 Déploiement Automatisé
-```bash
-# Script de déploiement 1-clic
-./deploy.sh
-```
-
-## 💻 Installation Locale
-```bash
-git clone https://github.com/QuenumGerald/NudgeBot
-cd NudgeBot
-npm install
-npm run build
-npm start
-```
-
-## 🔗 Liens Utiles
-- **Application**: https://nudgebot-v2.onrender.com
-- **Dashboard**: https://dashboard.render.com/web/srv-d76e14udqaus73cugsig
-- **Repository**: https://github.com/QuenumGerald/NudgeBot
-
-## 🛠 Architecture
-- **Backend** : Express.js (Orchestrateur de Cline CLI).
-- **Frontend** : Next.js 15 (Tailwind CSS, Radix UI).
-- **IA** : Cline Autonomous Agent (DeepSeek v3).
-- **Déploiement** : Render (Node.js, Starter Plan).
+1. **Application API**: https://nudgebot-v2.onrender.com
+2. **Dashboard**: https://dashboard.render.com/web/srv-d76e14udqaus73cugsig
+3. **Endpoint**: `/api/chat`
 
 ## ⚙️ Variables d'Environnement
+
+Configurez dans le dashboard Render:
 - `OPENROUTER_API_KEY`: Clé API OpenRouter
 - `DEEPSEEK_API_KEY`: Clé API DeepSeek  
-- `DEFAULT_MODEL`: Modèle par défaut (deepseek/deepseek-chat)
-- `NODE_ENV`: Environnement (production)
-- `API_ONLY`: Mode API uniquement (false pour 1-clic)
+- `DEFAULT_MODEL`: deepseek/deepseek-chat
+- `NODE_ENV`: production
+- `API_ONLY`: true
+- `PORT`: 10000
+
+## 📡 API Usage
+
+```bash
+curl -X POST https://nudgebot-v2.onrender.com/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Hello!"}]}'
+```
+
+## 🛠 Architecture
+
+- **Backend**: Express.js pur (pas de Next.js)
+- **IA**: Cline CLI integration
+- **Déploiement**: Render API-only mode
 
 ---
-*Built with ❤️ for autonomous efficiency.*
+*Built for reliable deployment*
