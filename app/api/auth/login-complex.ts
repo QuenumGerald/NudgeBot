@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-
-const config = {
-  appPassword: process.env.APP_PASSWORD || "admin",
-  appSecret: process.env.APP_SECRET || "nudgebot-secret"
-};
+import { config } from "@/lib/config";
 
 export async function POST(request: Request) {
   try {
