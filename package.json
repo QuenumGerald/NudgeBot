@@ -19,7 +19,11 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tooltip": "latest",
     "@tailwindcss/postcss": "^4.0.0-beta.6",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.17.10",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^19.0.1",
+    "@types/react-dom": "^19.0.2",
     "better-sqlite3": "^12.8.0",
     "class-variance-authority": "latest",
     "clsx": "latest",
@@ -40,10 +44,6 @@
     "typescript": "^5.7.2"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/pg": "^8.11.10",
-    "@types/react": "^19.0.1",
-    "@types/react-dom": "^19.0.2",
     "eslint": "^9.39.4",
     "eslint-config-next": "^15.1.0",
     "postcss": "^8.4.49",
