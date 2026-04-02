@@ -25,6 +25,7 @@
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
     "better-sqlite3": "^12.8.0",
+    "cline": "^2.11.0",
     "class-variance-authority": "latest",
     "clsx": "latest",
     "cors": "^2.8.6",
