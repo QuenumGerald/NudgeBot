@@ -38,9 +38,10 @@ setInterval(() => { }, 1000 * 60 * 60);
 function warmupCline() {
   const workspacePath = path.join(process.cwd(), 'workspace');
   if (!fs.existsSync(workspacePath)) fs.mkdirSync(workspacePath, { recursive: true });
-  const warmup = spawn('cline', ['task', 'ping', '--yolo', '--json'], {
+  const warmup = spawn(path.join(process.cwd(), 'node_modules', '.bin', 'cline'), ['task', 'ping', '--config', path.join(workspacePath, '.cline'), '--yolo', '--json'], {
     cwd: workspacePath,
     timeout: 30000,
+    env: { HOME: process.env.HOME, PATH: process.env.PATH, DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY, OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY },
   });
   warmup.on('close', () => console.log('✅ Cline warm-up done'));
   warmup.on('error', () => {}); // ignore errors silently
@@ -48,7 +49,7 @@ function warmupCline() {
 
 // Auto-configure Cline on startup
 function setupCline() {
-  const clineDir = path.join(process.cwd(), 'data', '.cline', 'data');
+  const clineDir = path.join(process.cwd(), 'workspace', '.cline', 'data');
   const secretsFile = path.join(clineDir, 'secrets.json');
   const globalStateFile = path.join(clineDir, 'globalState.json');
 
@@ -139,14 +140,24 @@ app.post('/api/chat', async (req, res) => {
     const workspacePath = path.join(process.cwd(), 'workspace');
     if (!fs.existsSync(workspacePath)) fs.mkdirSync(workspacePath, { recursive: true });
 
-    const cline = spawn('./node_modules/.bin/cline', [
+    // Env filtré : uniquement ce dont Cline a besoin, pas les secrets du serveur
+    const clineEnv = {
+      HOME: process.env.HOME,
+      PATH: process.env.PATH,
+      DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+      NODE_ENV: process.env.NODE_ENV,
+    };
+
+    const cline = spawn(path.join(process.cwd(), 'node_modules', '.bin', 'cline'), [
       'task',
       userMessage,
-      '--config', path.join(process.cwd(), 'data', '.cline'),
+      '--config', path.join(workspacePath, '.cline'),
       '--yolo',
       '--json'
     ], {
-      cwd: workspacePath
+      cwd: workspacePath,
+      env: clineEnv,
     });
 
     let stdoutBuffer = '';
