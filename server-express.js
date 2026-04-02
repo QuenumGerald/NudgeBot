@@ -44,7 +44,7 @@ function warmupCline() {
     env: { HOME: process.env.HOME, PATH: process.env.PATH, DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY, OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY },
   });
   warmup.on('close', () => console.log('✅ Cline warm-up done'));
-  warmup.on('error', () => {}); // ignore errors silently
+  warmup.on('error', () => { }); // ignore errors silently
 }
 
 // Auto-configure Cline on startup
@@ -67,11 +67,13 @@ function setupCline() {
   fs.writeFileSync(globalStateFile, JSON.stringify({
     actModeApiProvider: "deepseek",
     actModeDeepSeekModelId: "deepseek-chat",
+    planModeApiProvider: "deepseek",
+    planModeDeepSeekModelId: "deepseek-chat",
     mode: "act",
     autoApprovalSettings: {
       version: 22,
       enabled: true,
-      maxRequests: 20,
+      maxRequests: 1,
       actions: {
         readFiles: true,
         editFiles: true,
