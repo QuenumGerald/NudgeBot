@@ -52,8 +52,8 @@ function setupCline() {
 
   // Write global state
   fs.writeFileSync(globalStateFile, JSON.stringify({
-    actModeApiProvider: "openrouter",
-    actModeOpenRouterModelId: "deepseek/deepseek-chat",
+    actModeApiProvider: "deepseek",
+    actModeDeepSeekModelId: "deepseek-chat",
     mode: "act",
     autoApprovalSettings: {
       version: 22,
