@@ -19,4 +19,4 @@ ENV NODE_ENV=production
 ENV DOCKER=true
 ENV DATA_DIR=/var/data
 
-CMD ["npm", "start"]
+CMD ["node", "server-express.js"]

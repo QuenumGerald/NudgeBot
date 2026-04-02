@@ -126,8 +126,7 @@ app.post('/api/chat', async (req, res) => {
     const workspacePath = path.join(process.cwd(), 'workspace');
     if (!fs.existsSync(workspacePath)) fs.mkdirSync(workspacePath, { recursive: true });
 
-    const cline = spawn('npx', [
-      'cline',
+    const cline = spawn('cline', [
       'task',
       userMessage,
       '--config', path.join(process.cwd(), 'data', '.cline'),
