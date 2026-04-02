@@ -34,6 +34,18 @@ process.on('unhandledRejection', (reason) => {
 // Keepalive: prevents Node from exiting when event loop is empty
 setInterval(() => { }, 1000 * 60 * 60);
 
+// Warm-up: pre-spawn a cline process at startup so the first request is faster
+function warmupCline() {
+  const workspacePath = path.join(process.cwd(), 'workspace');
+  if (!fs.existsSync(workspacePath)) fs.mkdirSync(workspacePath, { recursive: true });
+  const warmup = spawn('cline', ['task', 'ping', '--yolo', '--json'], {
+    cwd: workspacePath,
+    timeout: 30000,
+  });
+  warmup.on('close', () => console.log('✅ Cline warm-up done'));
+  warmup.on('error', () => {}); // ignore errors silently
+}
+
 // Auto-configure Cline on startup
 function setupCline() {
   const clineDir = path.join(process.cwd(), 'data', '.cline', 'data');
@@ -73,6 +85,7 @@ function setupCline() {
 }
 
 setupCline();
+warmupCline();
 
 app.use(cors());
 app.use(express.json());
@@ -131,7 +144,6 @@ app.post('/api/chat', async (req, res) => {
       userMessage,
       '--config', path.join(process.cwd(), 'data', '.cline'),
       '--yolo',
-      '--auto-condense',
       '--json'
     ], {
       cwd: workspacePath
