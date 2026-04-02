@@ -14,6 +14,9 @@ const handle = nextApp ? nextApp.getRequestHandler() : null;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const WORKSPACE_PATH = path.join(process.cwd(), 'workspace');
+const CLINE_BIN = path.join(process.cwd(), 'node_modules', '.bin', 'cline');
+const CLINE_CONFIG = path.join(WORKSPACE_PATH, '.cline');
 
 // Enable CORS for Netlify
 app.use(cors({
@@ -36,10 +39,9 @@ setInterval(() => { }, 1000 * 60 * 60);
 
 // Warm-up: pre-spawn a cline process at startup so the first request is faster
 function warmupCline() {
-  const workspacePath = path.join(process.cwd(), 'workspace');
-  if (!fs.existsSync(workspacePath)) fs.mkdirSync(workspacePath, { recursive: true });
-  const warmup = spawn(path.join(process.cwd(), 'node_modules', '.bin', 'cline'), ['task', 'ping', '--config', path.join(workspacePath, '.cline'), '--yolo', '--json'], {
-    cwd: workspacePath,
+  fs.mkdirSync(WORKSPACE_PATH, { recursive: true });
+  const warmup = spawn(CLINE_BIN, ['task', 'ping', '--config', CLINE_CONFIG, '--yolo', '--json'], {
+    cwd: WORKSPACE_PATH,
     timeout: 30000,
     env: { HOME: process.env.HOME, PATH: process.env.PATH, DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY, OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY },
   });
@@ -49,7 +51,7 @@ function warmupCline() {
 
 // Auto-configure Cline on startup
 function setupCline() {
-  const clineDir = path.join(process.cwd(), 'workspace', '.cline', 'data');
+  const clineDir = path.join(WORKSPACE_PATH, '.cline', 'data');
   const secretsFile = path.join(clineDir, 'secrets.json');
   const globalStateFile = path.join(clineDir, 'globalState.json');
 
@@ -81,11 +83,16 @@ function setupCline() {
         useBrowser: true,
         useMcp: true
       }
-    }
+    },
+    mcpEnabled: true,
+    browserToolEnabled: true
   }, null, 2));
 
   console.log('✅ Cline configured automatically');
 }
+
+// Stocke le dernier taskId par session utilisateur pour réutiliser la session Cline
+const sessionTaskIds = new Map();
 
 setupCline();
 warmupCline();
@@ -128,7 +135,7 @@ app.post('/api/auth/login', (req, res) => {
 // Chat endpoint with DeepSeek API
 app.post('/api/chat', async (req, res) => {
   try {
-    const { messages, model } = req.body;
+    const { messages, model, sessionId } = req.body;
     const userMessage = messages[messages.length - 1].content;
 
     console.log('[API] Received message:', userMessage);
@@ -137,10 +144,6 @@ app.post('/api/chat', async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-
-    // Call Cline CLI task in isolated workspace
-    const workspacePath = path.join(process.cwd(), 'workspace');
-    if (!fs.existsSync(workspacePath)) fs.mkdirSync(workspacePath, { recursive: true });
 
     // Env filtré : uniquement ce dont Cline a besoin, pas les secrets du serveur
     const clineEnv = {
@@ -151,25 +154,43 @@ app.post('/api/chat', async (req, res) => {
       NODE_ENV: process.env.NODE_ENV,
     };
 
-    const cline = spawn(path.join(process.cwd(), 'node_modules', '.bin', 'cline'), [
+    // Réutiliser la session Cline existante si disponible (évite de recharger tout depuis zéro)
+    const existingTaskId = sessionId ? sessionTaskIds.get(sessionId) : null;
+    const clineArgs = [
       'task',
       userMessage,
-      '--config', path.join(workspacePath, '.cline'),
+      '--act',
+      '--config', CLINE_CONFIG,
+      '--model', 'deepseek/deepseek-chat',
       '--yolo',
-      '--json'
-    ], {
-      cwd: workspacePath,
+      '--timeout', '60',
+      '--json',
+    ];
+    if (existingTaskId) {
+      clineArgs.push('--taskId', existingTaskId);
+      console.log('[API] Resuming Cline session:', existingTaskId);
+    }
+
+    const cline = spawn(CLINE_BIN, clineArgs, {
+      cwd: WORKSPACE_PATH,
       env: clineEnv,
     });
 
     let stdoutBuffer = '';
-    let lastTextLength = 0;
+    let capturedTaskId = null;
 
     // Helper to parse and dispatch a single JSON event line
     function processEvent(line) {
       if (!line.trim()) return;
       try {
         const event = JSON.parse(line);
+
+        // Capturer le taskId dès qu'il apparaît pour réutiliser la session
+        if (!capturedTaskId && event.taskId) {
+          capturedTaskId = event.taskId;
+          if (sessionId) sessionTaskIds.set(sessionId, capturedTaskId);
+          console.log('[API] Captured taskId:', capturedTaskId);
+        }
         if (event.type === 'say') {
           if (event.say === 'completion_result') {
             const cleanText = (event.text || '')
