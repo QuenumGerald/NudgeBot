@@ -2,9 +2,11 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
 const next = require('next');
 require('dotenv').config();
+
+const { StateGraph, MemorySaver, Annotation } = require("@langchain/langgraph");
+const { HumanMessage, SystemMessage, AIMessage } = require("@langchain/core/messages");
 
 const dev = process.env.NODE_ENV !== 'production';
 const API_ONLY = process.env.API_ONLY === 'true'; // Set to true for Render deployment
@@ -14,9 +16,9 @@ const handle = nextApp ? nextApp.getRequestHandler() : null;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const WORKSPACE_PATH = path.join(process.cwd(), 'workspace');
-const CLINE_BIN = path.join(process.cwd(), 'node_modules', '.bin', 'cline');
-const CLINE_CONFIG = path.join(WORKSPACE_PATH, '.cline');
+
+// Global memory for LangGraph agent
+const memory = new MemorySaver();
 
 // Enable CORS for Netlify
 app.use(cors({
@@ -37,65 +39,6 @@ process.on('unhandledRejection', (reason) => {
 // Keepalive: prevents Node from exiting when event loop is empty
 setInterval(() => { }, 1000 * 60 * 60);
 
-// Warm-up: pre-spawn a cline process at startup so the first request is faster
-function warmupCline() {
-  fs.mkdirSync(WORKSPACE_PATH, { recursive: true });
-  const warmup = spawn(CLINE_BIN, ['task', 'ping', '--config', CLINE_CONFIG, '--yolo', '--json'], {
-    cwd: WORKSPACE_PATH,
-    timeout: 30000,
-    env: { HOME: process.env.HOME, PATH: process.env.PATH, DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY, OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY },
-  });
-  warmup.on('close', () => console.log('✅ Cline warm-up done'));
-  warmup.on('error', () => { }); // ignore errors silently
-}
-
-// Auto-configure Cline on startup
-function setupCline() {
-  const clineDir = path.join(WORKSPACE_PATH, '.cline', 'data');
-  const secretsFile = path.join(clineDir, 'secrets.json');
-  const globalStateFile = path.join(clineDir, 'globalState.json');
-
-  // Create directories
-  fs.mkdirSync(clineDir, { recursive: true });
-
-  // Write secrets
-  fs.writeFileSync(secretsFile, JSON.stringify({
-    deepSeekApiKey: process.env.DEEPSEEK_API_KEY,
-    openRouterApiKey: process.env.OPENROUTER_API_KEY,
-    openAiApiKey: process.env.OPENAI_API_KEY || "",
-  }, null, 2));
-
-  // Write global state
-  fs.writeFileSync(globalStateFile, JSON.stringify({
-    actModeApiProvider: "deepseek",
-    actModeDeepSeekModelId: "deepseek-chat",
-    planModeApiProvider: "deepseek",
-    planModeDeepSeekModelId: "deepseek-chat",
-    mode: "act",
-    autoApprovalSettings: {
-      version: 22,
-      enabled: true,
-      maxRequests: 1,
-      actions: {
-        readFiles: true,
-        editFiles: true,
-        executeSafeCommands: true,
-        useBrowser: true,
-        useMcp: true
-      }
-    },
-    mcpEnabled: true,
-    browserToolEnabled: true
-  }, null, 2));
-
-  console.log('✅ Cline configured automatically');
-}
-
-// Stocke le dernier taskId par session utilisateur pour réutiliser la session Cline
-const sessionTaskIds = new Map();
-
-setupCline();
-warmupCline();
 
 app.use(cors());
 app.use(express.json());
@@ -145,107 +88,100 @@ app.post('/api/chat', async (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    // Env filtré : uniquement ce dont Cline a besoin, pas les secrets du serveur
-    const clineEnv = {
-      HOME: process.env.HOME,
-      PATH: process.env.PATH,
-      DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
-      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
-      NODE_ENV: process.env.NODE_ENV,
-    };
+    res.write(`data: ${JSON.stringify({ type: 'thinking', content: '🤔 Thinking...' })}\n\n`);
 
-    // Réutiliser la session Cline existante si disponible (évite de recharger tout depuis zéro)
-    const existingTaskId = sessionId ? sessionTaskIds.get(sessionId) : null;
-    const clineArgs = [
-      'task',
-      userMessage,
-      '--act',
-      '--config', CLINE_CONFIG,
-      '--model', 'deepseek/deepseek-chat',
-      '--yolo',
-      '--timeout', '60',
-      '--json',
-    ];
-    if (existingTaskId) {
-      clineArgs.push('--taskId', existingTaskId);
-      console.log('[API] Resuming Cline session:', existingTaskId);
-    }
-
-    const cline = spawn(CLINE_BIN, clineArgs, {
-      cwd: WORKSPACE_PATH,
-      env: clineEnv,
+    const GraphState = Annotation.Root({
+      messages: Annotation({
+        reducer: (x, y) => x.concat(y),
+        default: () => [],
+      }),
     });
 
-    let stdoutBuffer = '';
-    let capturedTaskId = null;
+    const apiKey = process.env.OPENROUTER_API_KEY || "";
+    const activeModel = model || "qwen/qwen3.6-plus-preview:free";
 
-    // Helper to parse and dispatch a single JSON event line
-    function processEvent(line) {
-      if (!line.trim()) return;
-      try {
-        const event = JSON.parse(line);
+    async function callModel(state) {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://nudgebot.app",
+          "X-Title": "Nudgebot",
+        },
+        body: JSON.stringify({
+          model: activeModel,
+          messages: state.messages.map(m => ({
+            role: m instanceof HumanMessage ? "user" : m instanceof SystemMessage ? "system" : "assistant",
+            content: m.content
+          })),
+          stream: true,
+        }),
+      });
 
-        // Capturer le taskId dès qu'il apparaît pour réutiliser la session
-        if (!capturedTaskId && event.taskId) {
-          capturedTaskId = event.taskId;
-          if (sessionId) sessionTaskIds.set(sessionId, capturedTaskId);
-          console.log('[API] Captured taskId:', capturedTaskId);
-        }
-        if (event.type === 'say') {
-          if (event.say === 'completion_result') {
-            const cleanText = (event.text || '')
-              .replace(/<task_progress>[\s\S]*?(?:<\/task_progress>|$)/g, '')
-              .trim();
-            if (cleanText) {
-              res.write(`data: ${JSON.stringify({ type: 'replace', content: cleanText })}\n\n`);
-            }
-          } else if (event.say === 'text') {
-            const preview = (event.text || '').replace(/<task_progress>[\s\S]*?(?:<\/task_progress>|$)/g, '').trim();
-            if (preview) {
-              res.write(`data: ${JSON.stringify({ type: 'thinking', content: '💬 ' + preview.substring(0, 80) + (preview.length > 80 ? '...' : '') })}\n\n`);
-            }
-          } else if (event.say === 'api_req_started') {
-            res.write(`data: ${JSON.stringify({ type: 'thinking', content: '🤔 Thinking...' })}\n\n`);
-          } else if (event.say === 'task_progress') {
-            res.write(`data: ${JSON.stringify({ type: 'thinking', content: '⚙️ ' + (event.text || 'Working...') })}\n\n`);
-          } else if (event.say === 'error') {
-            res.write(`data: ${JSON.stringify({ type: 'thinking', content: '❌ Error: ' + event.text })}\n\n`);
-          }
-        } else if (event.type === 'ask') {
-          if (event.ask === 'tool_call' || event.ask === 'command') {
-            try {
-              const toolData = JSON.parse(event.text || '{}');
-              res.write(`data: ${JSON.stringify({ type: 'thinking', content: '🛠️ Tool: ' + (toolData.tool || event.ask) })}\n\n`);
-            } catch (e) {
-              res.write(`data: ${JSON.stringify({ type: 'thinking', content: '🛠️ Using tool...' })}\n\n`);
-            }
-          }
-        }
-      } catch (e) {
-        // Ignore invalid JSON lines (npm/npx noise)
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
       }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response body");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullContent = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith("data: ")) continue;
+          const data = line.slice(6);
+          if (data === "[DONE]") continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              fullContent += content;
+              res.write(`data: ${JSON.stringify({ type: "replace", content: fullContent })}\n\n`);
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
+      }
+
+      return { messages: [new AIMessage(fullContent)] };
     }
 
-    cline.stdout.on('data', (data) => {
-      stdoutBuffer += data.toString();
-      const lines = stdoutBuffer.split('\n');
-      stdoutBuffer = lines.pop() || '';
-      for (const line of lines) processEvent(line);
-    });
+    const workflow = new StateGraph(GraphState)
+      .addNode("agent", callModel)
+      .addEdge("__start__", "agent")
+      .addEdge("agent", "__end__");
 
-    cline.stderr.on('data', (data) => {
-      const errLine = data.toString().trim();
-      if (errLine) console.error(`[Cline] ${errLine}`);
-    });
+    const appGraph = workflow.compile({ checkpointer: memory });
 
-    cline.on('close', (code) => {
-      // Flush any remaining buffered line (completion_result has no trailing newline)
-      if (stdoutBuffer.trim()) processEvent(stdoutBuffer);
+    const graphMessages = [
+      new SystemMessage("You are NudgeBot, an expert security and code audit assistant. ALWAYS respond in English."),
+      new HumanMessage(userMessage)
+    ];
 
-      console.log(`[API] Cline process closed with code: ${code}`);
-      res.write(`data: ${JSON.stringify({ type: 'done', model: 'cline-cli' })}\n\n`);
-      res.end();
-    });
+    const config = { configurable: { thread_id: sessionId || "default" } };
+
+    try {
+      await appGraph.invoke({ messages: graphMessages }, config);
+    } catch (e) {
+      console.error("[LangGraph] Error during execution", e);
+      res.write(`data: ${JSON.stringify({ type: "error", message: e.message })}\n\n`);
+    }
+
+    res.write(`data: ${JSON.stringify({ type: 'done', model: activeModel })}\n\n`);
+    res.end();
   } catch (error) {
     console.error('[API] Error:', error);
     res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })} \n\n`);
