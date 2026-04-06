@@ -11,6 +11,7 @@
   "dependencies": {
     "@langchain/core": "^1.1.39",
     "@langchain/langgraph": "^1.2.7",
+    "@langchain/openai": "^0.5.18",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dialog": "latest",
     "@radix-ui/react-dropdown-menu": "latest",
@@ -43,7 +44,8 @@
     "tailwind-merge": "latest",
     "tailwindcss-animate": "^1.0.7",
     "tw-animate-css": "latest",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "eslint": "^9.39.4",

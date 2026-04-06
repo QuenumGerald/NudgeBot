@@ -3,12 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Brain, LogOut, MessageSquare } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+type Message = { role: string; content: string };
 
 export default function Home() {
   const router = useRouter();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [messages, setMessages] = useState<Array<{role: string, content: string}>>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
 
   const handleLogout = async () => {
     await fetch("/api/auth/login", {
@@ -22,7 +26,7 @@ export default function Home() {
   const handleSubmit = async () => {
     if (!input.trim() || isLoading) return;
 
-    const userMessage = { role: "user", content: input };
+    const userMessage: Message = { role: "user", content: input };
     setMessages(prev => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
@@ -33,7 +37,6 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [...messages, userMessage],
-          sessionId: "simple-session",
           model: "deepseek/deepseek-chat-v3-0324:free",
         }),
       });
@@ -45,6 +48,7 @@ export default function Home() {
       let done = false;
       let buffer = "";
 
+      // Add empty assistant message to fill
       setMessages(prev => [...prev, { role: "assistant", content: "" }]);
 
       while (!done) {
@@ -56,30 +60,44 @@ export default function Home() {
           buffer = lines.pop() || "";
 
           for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const dataStr = line.slice(6);
-              if (!dataStr) continue;
+            if (!line.startsWith("data: ")) continue;
+            const dataStr = line.slice(6).trim();
+            if (!dataStr) continue;
 
-              try {
-                const event = JSON.parse(dataStr);
+            try {
+              const event = JSON.parse(dataStr);
 
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastMsg = newMsgs[newMsgs.length - 1];
+              setMessages(prev => {
+                const newMsgs = [...prev];
+                const lastMsg = newMsgs[newMsgs.length - 1];
+                if (lastMsg.role !== "assistant") return prev;
 
-                  if (event.type === "replace" || event.type === "delta") {
-                    if (lastMsg.role === "assistant") {
-                      lastMsg.content += event.content || "";
+                if (event.type === "delta") {
+                  lastMsg.content += event.content || "";
+                } else if (event.type === "replace") {
+                  // Legacy: set full content
+                  lastMsg.content = event.content || "";
+                } else if (event.type === "tool_start") {
+                  // Show tool call inline
+                  const inputStr = (() => {
+                    try {
+                      const parsed = JSON.parse(event.input || "{}");
+                      return Object.values(parsed).join(" ");
+                    } catch {
+                      return event.input || "";
                     }
-                  } else if (event.type === "error") {
-                    lastMsg.content = `**Error**: ${event.message}`;
-                  }
+                  })();
+                  lastMsg.content += `\n\n🔧 **${event.name}**: \`${inputStr}\`\n`;
+                } else if (event.type === "tool_result") {
+                  lastMsg.content += `\`\`\`\n${event.output}\n\`\`\`\n`;
+                } else if (event.type === "error") {
+                  lastMsg.content += `\n\n**Error**: ${event.message}`;
+                }
 
-                  return newMsgs;
-                });
-              } catch (e) {
-                // Ignore parse errors
-              }
+                return newMsgs;
+              });
+            } catch {
+              // Ignore parse errors
             }
           }
         }
@@ -142,12 +160,21 @@ export default function Home() {
                         : "bg-gray-100 text-gray-800"
                     }`}
                   >
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    {message.role === "assistant" ? (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        className="text-sm prose prose-sm max-w-none prose-code:bg-gray-200 prose-code:px-1 prose-code:rounded prose-pre:bg-gray-800 prose-pre:text-gray-100"
+                      >
+                        {message.content}
+                      </ReactMarkdown>
+                    ) : (
+                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    )}
                   </div>
                 </div>
               ))
             )}
-            {isLoading && (
+            {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
               <div className="flex justify-start">
                 <div className="bg-gray-100 rounded-lg px-4 py-2">
                   <div className="flex items-center gap-2 text-sm text-gray-600">
