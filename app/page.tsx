@@ -9,6 +9,34 @@ import { useDarkMode } from "./theme-provider";
 
 type Message = { role: string; content: string };
 
+function normalizeWordToken(token: string): string {
+  return token.toLowerCase().replace(/^[^a-z0-9']+|[^a-z0-9']+$/g, "");
+}
+
+function collapseAdjacentDuplicateWords(text: string): string {
+  const parts = text.split(/(\s+)/);
+  const out: string[] = [];
+  let lastWord: string | null = null;
+
+  for (const part of parts) {
+    if (!part) continue;
+    if (/^\s+$/.test(part)) {
+      out.push(part);
+      continue;
+    }
+
+    const normalized = normalizeWordToken(part);
+    if (normalized && normalized === lastWord) {
+      continue;
+    }
+
+    out.push(part);
+    if (normalized) lastWord = normalized;
+  }
+
+  return out.join("");
+}
+
 export default function Home() {
   const router = useRouter();
   const { isDark, toggleDark } = useDarkMode();
@@ -43,7 +71,6 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [...messages, userMessage],
-          model: "deepseek/deepseek-chat-v3-0324:free",
         }),
       });
 
@@ -80,6 +107,7 @@ export default function Home() {
 
                 if (event.type === "delta") {
                   lastMsg.content += event.content || "";
+                  lastMsg.content = collapseAdjacentDuplicateWords(lastMsg.content);
                 } else if (event.type === "replace") {
                   // Legacy: set full content
                   lastMsg.content = event.content || "";

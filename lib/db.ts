@@ -1,13 +1,77 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { Pool } from "pg";
-import Database from "better-sqlite3";
 import { config } from "./config";
 
 const useSqlite = process.env.USE_SQLITE === "true";
 
+// Sensitive keys that should be encrypted in the database
+const SENSITIVE_KEYS = [
+  "llm_api_key",
+  "github_token",
+  "jira_api_token",
+  "google_client_secret",
+  "google_refresh_token",
+];
+
+// Get stable encryption key from env or derive from APP_SECRET
+function getEncryptionKey(): Buffer {
+  if (process.env.ENCRYPTION_KEY) {
+    // Expect a 32-byte hex string or derive from it
+    const key = process.env.ENCRYPTION_KEY;
+    if (key.length >= 64) {
+      return Buffer.from(key.slice(0, 64), "hex");
+    }
+    // Hash it to get a stable 32-byte key
+    return crypto.createHash("sha256").update(key).digest();
+  }
+  // Fallback: derive from APP_SECRET
+  const secret = process.env.APP_SECRET || "default-insecure-secret";
+  return crypto.createHash("sha256").update(secret).digest();
+}
+
+// Encrypt sensitive value
+function encryptValue(plaintext: string): string {
+  try {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv("aes-256-gcm", getEncryptionKey(), iv);
+    const encrypted = Buffer.concat([
+      cipher.update(plaintext, "utf8"),
+      cipher.final(),
+    ]);
+    const authTag = cipher.getAuthTag();
+    // Format: iv:authTag:encrypted (all hex)
+    return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted.toString("hex")}`;
+  } catch (error) {
+    console.error("[Crypto] Encryption failed:", error);
+    throw error;
+  }
+}
+
+// Decrypt sensitive value
+function decryptValue(ciphertext: string): string {
+  try {
+    const [ivHex, authTagHex, encryptedHex] = ciphertext.split(":");
+    const iv = Buffer.from(ivHex, "hex");
+    const authTag = Buffer.from(authTagHex, "hex");
+    const encrypted = Buffer.from(encryptedHex, "hex");
+
+    const decipher = crypto.createDecipheriv("aes-256-gcm", getEncryptionKey(), iv);
+    decipher.setAuthTag(authTag);
+    return decipher.update(encrypted, undefined, "utf8") + decipher.final("utf8");
+  } catch {
+    // If decryption fails, return empty (corrupted or wrong key)
+    return "";
+  }
+}
+
 let pool: Pool | null = null;
-let sqliteDb: Database.Database | null = null;
+type BetterSqlite3Type = typeof import("better-sqlite3");
+type BetterSqlite3Db = import("better-sqlite3").Database;
+
+let BetterSqlite3: BetterSqlite3Type | null = null;
+let sqliteDb: BetterSqlite3Db | null = null;
 let isInitialized = false;
 
 function getPool(): Pool {
@@ -28,11 +92,26 @@ function getPool(): Pool {
   return pool;
 }
 
-function getSqliteDb(): Database.Database {
+function getSqliteModule(): BetterSqlite3Type {
+  if (BetterSqlite3) return BetterSqlite3;
+  try {
+    // Lazy-load native module to avoid crashing routes that don't need sqlite.
+    BetterSqlite3 = require("better-sqlite3") as BetterSqlite3Type;
+    return BetterSqlite3;
+  } catch (error: any) {
+    throw new Error(
+      `Failed to load better-sqlite3 (${error?.message || "unknown"}). ` +
+      `Run "npm rebuild better-sqlite3" with the same Node version as "npm run dev".`
+    );
+  }
+}
+
+function getSqliteDb(): BetterSqlite3Db {
   if (sqliteDb) return sqliteDb;
 
   fs.mkdirSync(config.dataDir, { recursive: true });
   const sqlitePath = path.join(config.dataDir, "nudgebot.sqlite");
+  const Database = getSqliteModule();
   sqliteDb = new Database(sqlitePath);
   sqliteDb.pragma("journal_mode = WAL");
   return sqliteDb;
@@ -151,24 +230,41 @@ export async function query(text: string, params: any[] = []) {
 
 export async function getSetting(key: string): Promise<string | null> {
   const result = await query("SELECT value FROM settings WHERE key = $1", [key]);
-  return result.rows[0]?.value ?? null;
+  const value = result.rows[0]?.value ?? null;
+  if (!value) return null;
+  return SENSITIVE_KEYS.includes(key) ? decryptValue(value) : value;
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
-  if (useSqlite) {
-    await query(
-      "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-      [key, value]
-    );
-  } else {
-    await query(
-      "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
-      [key, value]
-    );
+  try {
+    // Encrypt sensitive values before storing
+    const isSensitive = SENSITIVE_KEYS.includes(key);
+    const storedValue = isSensitive ? encryptValue(value) : value;
+
+    if (useSqlite) {
+      await query(
+        "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [key, storedValue]
+      );
+    } else {
+      await query(
+        "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+        [key, storedValue]
+      );
+    }
+    console.log(`[DB] Saved setting: ${key} (encrypted: ${isSensitive})`);
+  } catch (error) {
+    console.error(`[DB] Failed to save setting ${key}:`, error);
+    throw error;
   }
 }
 
 export async function getSettings(): Promise<Record<string, string>> {
   const result = await query("SELECT key, value FROM settings", []);
-  return Object.fromEntries(result.rows.map((r: any) => [r.key, r.value]));
+  return Object.fromEntries(
+    result.rows.map((r: any) => [
+      r.key,
+      SENSITIVE_KEYS.includes(r.key) ? decryptValue(r.value) : r.value,
+    ])
+  );
 }

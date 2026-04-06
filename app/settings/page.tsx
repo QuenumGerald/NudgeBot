@@ -24,7 +24,7 @@ const PROVIDER_MODEL_SUGGESTIONS: Record<string, string> = {
   openrouter: "deepseek/deepseek-chat",
   openai: "gpt-4o",
   anthropic: "claude-sonnet-4-6",
-  deepseek: "deepseek-chat",
+  deepseek: "deepseek-v3",
 };
 
 function Badge({ connected }: { connected: boolean }) {
@@ -71,34 +71,72 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // MCP custom servers
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [newMcp, setNewMcp] = useState<McpServer>({ name: "", command: "npx", args: "", env: "" });
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then(r => r.json())
-      .then(data => {
+    let active = true;
+
+    (async () => {
+      try {
+        const response = await fetch("/api/settings", {
+          method: "GET",
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!active) return;
+
+        if (!response.ok) {
+          const message = data?.error || `HTTP ${response.status}`;
+          setLoadError(`Impossible de charger les paramètres: ${message}`);
+          return;
+        }
+
+        setLoadError(null);
         setSettings(data.settings ?? {});
         if (data.settings?.mcp_servers) {
           try { setMcpServers(JSON.parse(data.settings.mcp_servers)); } catch { /* ignore */ }
         }
-      });
+      } catch (error: any) {
+        if (!active) return;
+        console.error("[Settings] Failed to fetch settings:", error);
+        setLoadError(`Impossible de contacter /api/settings (${error?.message || "erreur réseau"})`);
+      }
+    })();
+
+    return () => { active = false; };
   }, []);
 
   const set = (key: string, value: string) => setSettings(prev => ({ ...prev, [key]: value }));
 
   async function save(section: string, keys: Record<string, string>) {
     setSaving(section);
-    await fetch("/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keys }),
-    });
-    setSaving(null);
-    setSaved(section);
-    setTimeout(() => setSaved(null), 2000);
+    try {
+      const response = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keys }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        console.error(`[Settings] Error saving ${section}:`, error);
+        alert(`Erreur: ${error.error || "Sauvegarde échouée"}`);
+        setSaving(null);
+        return;
+      }
+      console.log(`[Settings] Saved ${section}`);
+      setSaved(section);
+      setTimeout(() => setSaved(null), 2000);
+    } catch (error) {
+      console.error(`[Settings] Network error:`, error);
+      alert("Erreur réseau: impossible de sauvegarder");
+    } finally {
+      setSaving(null);
+    }
   }
 
   async function saveMcpServers(servers: McpServer[]) {
@@ -137,6 +175,11 @@ export default function SettingsPage() {
       </header>
 
       <main className="max-w-2xl mx-auto p-6 space-y-6">
+        {loadError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300 px-4 py-3 text-sm">
+            {loadError}
+          </div>
+        )}
 
         {/* LLM */}
         <Section title="Modèle de langage">
