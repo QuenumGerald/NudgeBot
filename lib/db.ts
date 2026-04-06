@@ -69,6 +69,11 @@ export async function initDb(): Promise<void> {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_conv_session ON conversations(session_id);
       CREATE INDEX IF NOT EXISTS idx_memories_importance ON memories(importance DESC, created_at DESC);
     `);
@@ -104,6 +109,11 @@ export async function initDb(): Promise<void> {
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_conv_session ON conversations(session_id);
       CREATE INDEX IF NOT EXISTS idx_memories_importance ON memories(importance DESC, created_at DESC);
     `);
@@ -137,4 +147,28 @@ export async function query(text: string, params: any[] = []) {
 
   const db = getPool();
   return db.query(text, params);
+}
+
+export async function getSetting(key: string): Promise<string | null> {
+  const result = await query("SELECT value FROM settings WHERE key = $1", [key]);
+  return result.rows[0]?.value ?? null;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  if (useSqlite) {
+    await query(
+      "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      [key, value]
+    );
+  } else {
+    await query(
+      "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+      [key, value]
+    );
+  }
+}
+
+export async function getSettings(): Promise<Record<string, string>> {
+  const result = await query("SELECT key, value FROM settings", []);
+  return Object.fromEntries(result.rows.map((r: any) => [r.key, r.value]));
 }

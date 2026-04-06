@@ -2,8 +2,19 @@ const { Router } = require('express');
 const { HumanMessage, SystemMessage, AIMessage } = require("@langchain/core/messages");
 const { buildAgentGraph } = require("../lib/agent/graph");
 const { SYSTEM_PROMPT } = require("../lib/agent/tools");
+const { getMCPTools, getBaseURL } = require("../lib/agent/mcp");
 
 const router = Router();
+
+// Lazy-load getSettings to avoid circular require at startup (db.ts is compiled TS)
+async function loadSettings() {
+  try {
+    const { getSettings } = require("../lib/db");
+    return await getSettings();
+  } catch {
+    return {};
+  }
+}
 
 function sseWrite(res, payload) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -20,7 +31,7 @@ function extractTextContent(chunk) {
 }
 
 router.post('/', async (req, res) => {
-  const { messages, model } = req.body;
+  const { messages, model: modelOverride } = req.body;
 
   if (!messages || messages.length === 0) {
     return res.status(400).json({ error: "No messages provided" });
@@ -35,8 +46,16 @@ router.post('/', async (req, res) => {
 
   sseWrite(res, { type: 'thinking', content: '🤔 Thinking...' });
 
-  const activeModel = model || process.env.DEFAULT_MODEL || "deepseek/deepseek-chat";
-  const agentGraph = buildAgentGraph(activeModel);
+  // Load settings from DB (falls back to env vars if DB unavailable)
+  const settings = await loadSettings();
+  const model = settings.llm_model || modelOverride || process.env.DEFAULT_MODEL || "deepseek/deepseek-chat";
+  const apiKey = settings.llm_api_key || process.env.OPENROUTER_API_KEY || "";
+  const baseURL = getBaseURL(settings.llm_provider);
+
+  // Load MCP tools from configured integrations
+  const mcpTools = await getMCPTools(settings);
+
+  const agentGraph = buildAgentGraph({ model, apiKey, baseURL, mcpTools });
 
   const graphMessages = [
     new SystemMessage(SYSTEM_PROMPT),
@@ -66,7 +85,7 @@ router.post('/', async (req, res) => {
     sseWrite(res, { type: "error", message: err.message });
   }
 
-  sseWrite(res, { type: 'done', model: activeModel });
+  sseWrite(res, { type: 'done', model });
   res.end();
 });
 

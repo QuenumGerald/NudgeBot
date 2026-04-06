@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const authRouter = require('./routes/auth');
 const chatRouter = require('./routes/chat');
+const googleCallbackRouter = require('./routes/google-callback');
 
 const dev = process.env.NODE_ENV !== 'production';
 const API_ONLY = process.env.API_ONLY === 'true';
@@ -24,6 +25,7 @@ app.use(express.json());
 app.use(express.static('public'));
 
 app.use('/api/auth', authRouter);
+app.use('/api/auth', googleCallbackRouter);
 app.use('/api/chat', chatRouter);
 
 if (API_ONLY) {
