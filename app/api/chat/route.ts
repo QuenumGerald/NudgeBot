@@ -31,55 +31,6 @@ function getModelCandidates(provider: string, model: string): string[] {
   return [...new Set(candidates)];
 }
 
-function getNonOverlappingSuffix(current: string, incoming: string): string {
-  if (!incoming) return "";
-  if (!current) return incoming;
-
-  if (incoming.startsWith(current)) {
-    return incoming.slice(current.length);
-  }
-
-  const maxOverlap = Math.min(current.length, incoming.length);
-  for (let overlap = maxOverlap; overlap > 0; overlap--) {
-    if (current.endsWith(incoming.slice(0, overlap))) {
-      return incoming.slice(overlap);
-    }
-  }
-
-  return incoming;
-}
-
-function normalizeWordToken(token: string): string {
-  return token.toLowerCase().replace(/^[^a-z0-9']+|[^a-z0-9']+$/g, "");
-}
-
-function collapseAdjacentDuplicateWords(
-  text: string,
-  previousWord: string | null
-): { text: string; lastWord: string | null } {
-  const parts = text.split(/(\s+)/);
-  const out: string[] = [];
-  let lastWord = previousWord;
-
-  for (const part of parts) {
-    if (!part) continue;
-    if (/^\s+$/.test(part)) {
-      out.push(part);
-      continue;
-    }
-
-    const normalized = normalizeWordToken(part);
-    if (normalized && normalized === lastWord) {
-      continue;
-    }
-
-    out.push(part);
-    if (normalized) lastWord = normalized;
-  }
-
-  return { text: out.join(""), lastWord };
-}
-
 async function loadSettings(): Promise<AppSettings> {
   try {
     const db = await import("@/lib/db");
@@ -112,8 +63,6 @@ export async function POST(request: Request) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          let rawStreamText = "";
-          let lastSentWord: string | null = null;
           const headers: Record<string, string> = {
             "Authorization": `Bearer ${apiKey}`,
             "Content-Type": "application/json",
@@ -170,43 +119,36 @@ export async function POST(request: Request) {
 
           const decoder = new TextDecoder();
           let buffer = "";
+          const emitFromLine = (line: string) => {
+            if (!line.trim() || !line.startsWith("data: ")) return;
+            const data = line.slice(6).trim();
+            if (!data || data === "[DONE]") return;
+
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (!content) return;
+              controller.enqueue(
+                new TextEncoder().encode(`data: ${JSON.stringify({ type: "delta", content: String(content) })}\n\n`)
+              );
+            } catch {
+              // Ignore parse errors on non-JSON SSE frames
+            }
+          };
 
           while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done) {
+              if (buffer.trim()) emitFromLine(buffer);
+              break;
+            }
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split("\n");
             buffer = lines.pop() || "";
 
             for (const line of lines) {
-              if (!line.trim() || !line.startsWith("data: ")) continue;
-              const data = line.slice(6);
-              if (data === "[DONE]") continue;
-
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.choices?.[0]?.delta?.content;
-                if (content) {
-                  const freshRaw = getNonOverlappingSuffix(rawStreamText, String(content));
-                  if (!freshRaw) continue;
-                  rawStreamText += freshRaw;
-
-                  let freshContent = freshRaw;
-                  if (provider === "deepseek") {
-                    const cleaned = collapseAdjacentDuplicateWords(freshRaw, lastSentWord);
-                    freshContent = cleaned.text;
-                    lastSentWord = cleaned.lastWord;
-                  }
-                  if (!freshContent) continue;
-
-                  controller.enqueue(
-                    new TextEncoder().encode(`data: ${JSON.stringify({ type: "delta", content: freshContent })}\n\n`)
-                  );
-                }
-              } catch (e) {
-                // Ignore parse errors
-              }
+              emitFromLine(line);
             }
           }
 

@@ -74,7 +74,15 @@ export default function Home() {
         }),
       });
 
-      if (!response.body) throw new Error("No response body");
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(`HTTP ${response.status}${text ? ` - ${text.slice(0, 300)}` : ""}`);
+      }
+
+      if (!response.body) {
+        const text = await response.text().catch(() => "");
+        throw new Error(`No response body${text ? ` - ${text.slice(0, 300)}` : ""}`);
+      }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
@@ -102,15 +110,18 @@ export default function Home() {
 
               setMessages(prev => {
                 const newMsgs = [...prev];
-                const lastMsg = newMsgs[newMsgs.length - 1];
+                const lastIndex = newMsgs.length - 1;
+                const lastMsg = newMsgs[lastIndex];
                 if (lastMsg.role !== "assistant") return prev;
 
+                let nextContent = lastMsg.content;
+
                 if (event.type === "delta") {
-                  lastMsg.content += event.content || "";
-                  lastMsg.content = collapseAdjacentDuplicateWords(lastMsg.content);
+                  nextContent += event.content || "";
+                  nextContent = collapseAdjacentDuplicateWords(nextContent);
                 } else if (event.type === "replace") {
                   // Legacy: set full content
-                  lastMsg.content = event.content || "";
+                  nextContent = event.content || "";
                 } else if (event.type === "tool_start") {
                   // Show tool call inline
                   const inputStr = (() => {
@@ -121,13 +132,14 @@ export default function Home() {
                       return event.input || "";
                     }
                   })();
-                  lastMsg.content += `\n\n🔧 **${event.name}**: \`${inputStr}\`\n`;
+                  nextContent += `\n\n🔧 **${event.name}**: \`${inputStr}\`\n`;
                 } else if (event.type === "tool_result") {
-                  lastMsg.content += `\`\`\`\n${event.output}\n\`\`\`\n`;
+                  nextContent += `\`\`\`\n${event.output}\n\`\`\`\n`;
                 } else if (event.type === "error") {
-                  lastMsg.content += `\n\n**Error**: ${event.message}`;
+                  nextContent += `\n\n**Error**: ${event.message}`;
                 }
 
+                newMsgs[lastIndex] = { ...lastMsg, content: nextContent };
                 return newMsgs;
               });
             } catch {
@@ -138,9 +150,10 @@ export default function Home() {
       }
     } catch (error) {
       console.error("Chat error:", error);
+      const message = error instanceof Error ? error.message : "Erreur inconnue";
       setMessages(prev => [
         ...prev,
-        { role: "assistant", content: "Une erreur est survenue lors de la communication avec l'assistant." },
+        { role: "assistant", content: `Erreur de communication avec l'assistant: ${message}` },
       ]);
     } finally {
       setIsLoading(false);
