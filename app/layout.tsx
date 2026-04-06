@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Syne, JetBrains_Mono } from "next/font/google";
+import { ThemeProvider } from "./theme-provider";
 import "./globals.css";
 
 const syne = Syne({
@@ -25,9 +26,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${syne.variable} ${jetbrainsMono.variable} font-sans antialiased bg-bg text-text selection:bg-accent/30 selection:text-white`}>
-        {children}
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${syne.variable} ${jetbrainsMono.variable} font-sans antialiased bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-50 selection:bg-blue-500/30`}>
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

@@ -29,7 +29,7 @@ const PROVIDER_MODEL_SUGGESTIONS: Record<string, string> = {
 
 function Badge({ connected }: { connected: boolean }) {
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${connected ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${connected ? "bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-400" : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"}`}>
       {connected ? <CheckCircle size={11} /> : <Circle size={11} />}
       {connected ? "Connecté" : "Non configuré"}
     </span>
@@ -38,8 +38,8 @@ function Badge({ connected }: { connected: boolean }) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-4">
-      <h2 className="text-base font-semibold text-gray-800">{title}</h2>
+    <div className="bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 p-6 space-y-4">
+      <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">{title}</h2>
       {children}
     </div>
   );
@@ -48,7 +48,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
       {children}
     </div>
   );
@@ -61,7 +61,7 @@ function Input({ value, onChange, placeholder, type = "text" }: { value: string;
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+      className="w-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400 dark:placeholder-gray-500"
     />
   );
 }
@@ -119,17 +119,17 @@ export default function SettingsPage() {
   const provider = settings.llm_provider || "openrouter";
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="h-16 border-b border-gray-200 bg-white flex items-center justify-between px-6">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <header className="h-16 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center justify-between px-6">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
             <Brain size={20} className="text-white" />
           </div>
-          <h1 className="text-xl font-bold text-gray-800">Nudgebot — Paramètres</h1>
+          <h1 className="text-xl font-bold text-gray-800 dark:text-white">Nudgebot — Paramètres</h1>
         </div>
         <button
           onClick={() => router.push("/")}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-gray-100 border border-gray-200 text-gray-600 hover:bg-gray-200 transition-colors text-sm font-medium"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-sm font-medium"
         >
           <ArrowLeft size={14} />
           Retour au chat
@@ -147,7 +147,7 @@ export default function SettingsPage() {
                 set("llm_provider", e.target.value);
                 set("llm_model", PROVIDER_MODEL_SUGGESTIONS[e.target.value] || "");
               }}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {LLM_PROVIDERS.map(p => (
                 <option key={p.value} value={p.value}>{p.label}</option>
@@ -182,7 +182,7 @@ export default function SettingsPage() {
         {/* GitHub */}
         <Section title="GitHub">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">Personal Access Token</span>
+            <span className="text-sm text-gray-600 dark:text-gray-400">Personal Access Token</span>
             <Badge connected={!!(settings.github_token && settings.github_token !== "••••••")} />
           </div>
           <Field label="Token">
@@ -206,7 +206,7 @@ export default function SettingsPage() {
         {/* Jira */}
         <Section title="Jira / Atlassian">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">Authentification par token</span>
+            <span className="text-sm text-gray-600 dark:text-gray-400">Authentification par token</span>
             <Badge connected={!!(settings.jira_host && settings.jira_api_token && settings.jira_api_token !== "••••••")} />
           </div>
           <Field label="URL de l'instance">
@@ -231,10 +231,10 @@ export default function SettingsPage() {
         {/* Google */}
         <Section title="Google Calendar">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">OAuth2</span>
+            <span className="text-sm text-gray-600 dark:text-gray-400">OAuth2</span>
             <Badge connected={!!(settings.google_refresh_token && settings.google_refresh_token !== "••••••")} />
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
             Crée un projet Google Cloud, active l&apos;API Calendar, génère des credentials OAuth2 et colle-les ci-dessous. Ensuite clique &quot;Connecter&quot;.
           </p>
           <Field label="Client ID">
@@ -254,7 +254,7 @@ export default function SettingsPage() {
             </button>
             <a
               href="/api/auth/google"
-              className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium transition-colors"
             >
               Connecter avec Google
             </a>
@@ -263,26 +263,26 @@ export default function SettingsPage() {
 
         {/* MCP Custom */}
         <Section title="Serveurs MCP personnalisés">
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
             Connecte n&apos;importe quel serveur MCP compatible stdio. Les outils seront automatiquement disponibles dans le chat.
           </p>
           {mcpServers.length > 0 && (
             <div className="space-y-2">
               {mcpServers.map((s, i) => (
-                <div key={i} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                <div key={i} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
                   <div>
-                    <p className="text-sm font-medium text-gray-800">{s.name}</p>
-                    <p className="text-xs text-gray-500">{s.command} {s.args}</p>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{s.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{s.command} {s.args}</p>
                   </div>
-                  <button onClick={() => removeMcpServer(i)} className="text-gray-400 hover:text-red-500 transition-colors">
+                  <button onClick={() => removeMcpServer(i)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors">
                     <Trash2 size={14} />
                   </button>
                 </div>
               ))}
             </div>
           )}
-          <div className="space-y-2 border-t border-gray-100 pt-4">
-            <p className="text-xs font-medium text-gray-600">Ajouter un serveur</p>
+          <div className="space-y-2 border-t border-gray-100 dark:border-gray-800 pt-4">
+            <p className="text-xs font-medium text-gray-600 dark:text-gray-400">Ajouter un serveur</p>
             <div className="grid grid-cols-2 gap-2">
               <Field label="Nom">
                 <Input value={newMcp.name} onChange={v => setNewMcp(p => ({ ...p, name: v }))} placeholder="slack" />
