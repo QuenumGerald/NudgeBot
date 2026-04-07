@@ -6,8 +6,7 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const { messages, sessionId, model } = await request.json();
-    const userMessage = messages[messages.length - 1].content;
-    const activeModel = model || "qwen/qwen3.6-plus-preview:free";
+    const activeModel = model || "deepseek/deepseek-chat:free";
     const apiKey = process.env.OPENROUTER_API_KEY || "";
 
     const stream = new ReadableStream({
@@ -25,14 +24,17 @@ export async function POST(request: Request) {
               model: activeModel,
               messages: [
                 { role: "system", content: "You are NudgeBot, an expert security and code audit assistant. ALWAYS respond in English." },
-                { role: "user", content: userMessage }
+                ...messages
               ],
               stream: true,
             }),
+            signal: request.signal,
           });
 
           if (!response.ok) {
-            throw new Error(`API Error: ${response.status}`);
+            let errorText = "";
+            try { errorText = await response.text(); } catch (e) {}
+            throw new Error(`API Error: ${response.status} ${errorText}`);
           }
 
           const reader = response.body?.getReader();
@@ -70,16 +72,24 @@ export async function POST(request: Request) {
             }
           }
 
-          controller.enqueue(
-            new TextEncoder().encode(`data: ${JSON.stringify({ type: "done", model: activeModel })}\n\n`)
-          );
-          controller.close();
+          try {
+            controller.enqueue(
+              new TextEncoder().encode(`data: ${JSON.stringify({ type: "done", model: activeModel })}\n\n`)
+            );
+            controller.close();
+          } catch (e) {
+            console.error("[API] Error closing stream:", e);
+          }
         } catch (error: any) {
           console.error("[API] Error:", error);
-          controller.enqueue(
-            new TextEncoder().encode(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`)
-          );
-          controller.close();
+          try {
+            controller.enqueue(
+              new TextEncoder().encode(`data: ${JSON.stringify({ type: "error", message: error.message })}\n\n`)
+            );
+            controller.close();
+          } catch (e) {
+            console.error("[API] Error sending error to stream:", e);
+          }
         }
       },
     });

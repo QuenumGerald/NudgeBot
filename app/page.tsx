@@ -34,7 +34,6 @@ export default function Home() {
         body: JSON.stringify({
           messages: [...messages, userMessage],
           sessionId: "simple-session",
-          model: "deepseek/deepseek-chat-v3-0324:free",
         }),
       });
 
@@ -127,7 +126,7 @@ export default function Home() {
               <div className="flex flex-col items-center justify-center h-full text-gray-500">
                 <MessageSquare size={48} className="mb-4 text-gray-300" />
                 <p className="text-lg font-medium">Bienvenue sur Nudgebot</p>
-                <p className="text-sm mt-2">Comment puis-je vous aider aujourd'hui ?</p>
+                <p className="text-sm mt-2">Comment puis-je vous aider aujourd&apos;hui ?</p>
               </div>
             ) : (
               messages.map((message, index) => (
