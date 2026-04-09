@@ -1,19 +1,31 @@
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import type { DynamicStructuredTool } from "@langchain/core/tools";
 
+export const AVAILABLE_INTEGRATIONS = [
+  "fetch",
+  "github",
+  "google_calendar",
+  "jira",
+  "confluence",
+  "render",
+  "netlify",
+] as const;
+
+export type IntegrationId = (typeof AVAILABLE_INTEGRATIONS)[number];
+
 type McpRuntime = {
   client: MultiServerMCPClient;
   tools: DynamicStructuredTool[];
 };
 
-let mcpRuntimePromise: Promise<McpRuntime | null> | null = null;
+// Cache keyed by "<userId>:<sorted-integrations>"
+const mcpCache = new Map<string, Promise<McpRuntime | null>>();
 
 const toEnv = (value?: string) => (value ?? "").trim();
 
 const parseGoogleCredentials = () => {
   const raw = toEnv(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
   if (!raw) return undefined;
-
   try {
     return JSON.parse(raw) as Record<string, unknown>;
   } catch (error) {
@@ -22,9 +34,8 @@ const parseGoogleCredentials = () => {
   }
 };
 
-const buildMcpServers = () => {
+const ALL_SERVERS = () => {
   const googleServiceAccount = parseGoogleCredentials();
-
   return {
     fetch: {
       transport: "stdio" as const,
@@ -72,7 +83,7 @@ const buildMcpServers = () => {
         ...process.env,
         CONFLUENCE_API_TOKEN: toEnv(process.env.CONFLUENCE_API_TOKEN || process.env.JIRA_API_TOKEN),
         CONFLUENCE_EMAIL: toEnv(process.env.CONFLUENCE_EMAIL || process.env.JIRA_EMAIL),
-        CONFLUENCE_URL: toEnv(process.env.CONFLUENCE_URL),
+        CONFLUENCE_DOMAIN: toEnv(process.env.CONFLUENCE_URL),
       },
     },
     render: {
@@ -96,17 +107,28 @@ const buildMcpServers = () => {
   };
 };
 
-const initializeMCP = async (): Promise<McpRuntime | null> => {
+const initializeMCP = async (enabledIntegrations: string[]): Promise<McpRuntime | null> => {
+  if (enabledIntegrations.length === 0) return null;
+
+  const allServers = ALL_SERVERS();
+  const mcpServers = Object.fromEntries(
+    enabledIntegrations
+      .filter((id) => id in allServers)
+      .map((id) => [id, allServers[id as IntegrationId]])
+  );
+
+  if (Object.keys(mcpServers).length === 0) return null;
+
   const client = new MultiServerMCPClient({
     throwOnLoadError: false,
     onConnectionError: "ignore",
     prefixToolNameWithServerName: true,
-    mcpServers: buildMcpServers(),
+    mcpServers,
   });
 
   try {
     const tools = await client.getTools();
-    console.log(`[mcp] loaded ${tools.length} tool(s)`);
+    console.log(`[mcp] loaded ${tools.length} tool(s) for integrations: ${enabledIntegrations.join(", ")}`);
     return { client, tools };
   } catch (error) {
     console.error("[mcp] MCP initialization failed, continuing without MCP tools.", error);
@@ -115,18 +137,35 @@ const initializeMCP = async (): Promise<McpRuntime | null> => {
   }
 };
 
-export const setupMCP = async (): Promise<DynamicStructuredTool[]> => {
-  if (!mcpRuntimePromise) {
-    mcpRuntimePromise = initializeMCP();
+export const setupMCP = async (
+  enabledIntegrations: string[],
+  userId: string
+): Promise<DynamicStructuredTool[]> => {
+  if (enabledIntegrations.length === 0) return [];
+
+  const cacheKey = `${userId}:${[...enabledIntegrations].sort().join(",")}`;
+
+  if (!mcpCache.has(cacheKey)) {
+    mcpCache.set(cacheKey, initializeMCP(enabledIntegrations));
   }
 
-  const runtime = await mcpRuntimePromise;
+  const runtime = await mcpCache.get(cacheKey)!;
   return runtime?.tools ?? [];
 };
 
+export const invalidateMCPCache = (userId: string): void => {
+  for (const key of mcpCache.keys()) {
+    if (key.startsWith(`${userId}:`)) {
+      mcpCache.get(key)?.then((r) => r?.client.close().catch(() => undefined));
+      mcpCache.delete(key);
+    }
+  }
+};
+
 export const closeMCP = async (): Promise<void> => {
-  if (!mcpRuntimePromise) return;
-  const runtime = await mcpRuntimePromise;
-  await runtime?.client.close().catch(() => undefined);
-  mcpRuntimePromise = null;
+  for (const [key, promise] of mcpCache.entries()) {
+    const runtime = await promise;
+    await runtime?.client.close().catch(() => undefined);
+    mcpCache.delete(key);
+  }
 };

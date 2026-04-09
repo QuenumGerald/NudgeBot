@@ -44,11 +44,18 @@ export const createLLM = (provider: string, modelName: string, apiKey: string) =
   });
 };
 
-export const getAgent = async (provider: string, modelName: string, apiKey: string) => {
+export const getAgent = async (
+  provider: string,
+  modelName: string,
+  apiKey: string,
+  enabledIntegrations: string[] = [],
+  userId: string = "",
+  previousContext: string | null = null
+) => {
   const graphBuilder = new StateGraph(MessagesAnnotation);
 
   const llm = createLLM(provider, modelName, apiKey);
-  const mcpTools = await setupMCP();
+  const mcpTools = await setupMCP(enabledIntegrations, userId);
   const allTools = [...localTools, ...mcpTools];
 
   let toolsEnabled = false;
@@ -61,12 +68,18 @@ export const getAgent = async (provider: string, modelName: string, apiKey: stri
     console.error("Failed to bind tools to LLM, continuing without tools:", e);
   }
 
-  const systemPrompt = [
+  const systemParts = [
     "Tu es NudgeBot, un assistant IA utile.",
     "Affiche toujours une courte section 'Réflexion' (résumée, actionnable, sans divulguer de raisonnement sensible détaillé) avant ta réponse finale.",
     "Tu dois gérer un dossier de travail par projet : utilise d'abord l'outil create_project_workspace pour créer/résoudre le sous-dossier du projet avant de manipuler des fichiers.",
     "Privilégie les outils MCP disponibles pour GitHub, Jira, Confluence, Google Calendar, Render, Netlify et Fetch quand c'est pertinent.",
-  ].join(" ");
+  ];
+
+  if (previousContext) {
+    systemParts.push(`\n--- Contexte des sessions précédentes ---\n${previousContext}\n---`);
+  }
+
+  const systemPrompt = systemParts.join(" ");
 
   const callModel = async (state: typeof MessagesAnnotation.State) => {
     const response = await llmWithTools.invoke([

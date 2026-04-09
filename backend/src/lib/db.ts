@@ -38,6 +38,13 @@ async function initializeDb(db: Database) {
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
       );
     `);
+
+    // Migration: add enabled_integrations if not present
+    try {
+      await db.exec(`ALTER TABLE settings ADD COLUMN enabled_integrations TEXT DEFAULT '[]';`);
+    } catch {
+      // Column already exists, ignore
+    }
   } catch (error) {
     console.error('Error initializing database:', error);
     throw error;

@@ -1,15 +1,16 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import * as blazerjob from "blazerjob";
 import path from "path";
 import { promises as fs } from "fs";
 import { exec as execCallback } from "child_process";
 import { promisify } from "util";
+import {
+  scheduleOnce,
+  scheduleRecurring,
+  listTasks,
+  cancelTask,
+} from "../blazerJobManager";
 
-// Initialize blazerjob scheduler using the sqlite database
-const blazer = new (blazerjob as any).BlazeJob({
-  dbPath: process.env.DATABASE_URL || "nudgebot.sqlite",
-});
 const exec = promisify(execCallback);
 
 const getProjectsRoot = () => {
@@ -58,38 +59,88 @@ export const createProjectWorkspaceTool = tool(
 );
 
 export const scheduleTaskTool = tool(
-  async ({ taskName, delay, payload }: { taskName: string; delay: number; payload: any }) => {
+  async ({
+    taskName,
+    description,
+    delayMs,
+    intervalMs,
+  }: {
+    taskName: string;
+    description: string;
+    delayMs: number;
+    intervalMs?: number;
+  }) => {
     try {
-      const runAt = Date.now() + delay;
-      await blazer.schedule(taskName, payload, runAt);
-      return `Task '${taskName}' scheduled to run in ${delay}ms.`;
+      const noop = async () => {
+        console.log(`[blazer] task '${taskName}' fired: ${description}`);
+      };
+
+      const id = intervalMs && intervalMs > 0
+        ? scheduleRecurring(taskName, noop, intervalMs)
+        : scheduleOnce(taskName, noop, delayMs);
+
+      const kind = intervalMs && intervalMs > 0
+        ? `recurring every ${intervalMs / 60000}min`
+        : `one-off in ${delayMs / 1000}s`;
+
+      return `Task '${taskName}' scheduled (${kind}). ID: ${id}`;
     } catch (e: any) {
       return `Failed to schedule task: ${e.message}`;
     }
   },
   {
     name: "schedule_task",
-    description: "Schedules an asynchronous task using blazerjob. Useful for reminders or deferred actions.",
+    description:
+      "Schedules a named task via BlazerJob. Set intervalMs > 0 for recurring tasks, leave it out for one-off.",
     schema: z.object({
-      taskName: z.string().describe("The name or identifier of the task."),
-      delay: z.number().describe("The delay in milliseconds before the task should run."),
-      payload: z.any().describe("Additional data for the task."),
+      taskName: z.string().describe("Unique name for the task."),
+      description: z.string().describe("Human-readable description logged when the task fires."),
+      delayMs: z.number().describe("Delay in ms before first run (one-off or first recurring run)."),
+      intervalMs: z
+        .number()
+        .optional()
+        .describe("If provided and > 0, the task repeats every intervalMs milliseconds."),
     }),
   }
 );
 
-export const checkTasksTool = tool(
+export const listTasksTool = tool(
   async () => {
     try {
-      return "Blazerjob scheduler is active and managing database tasks.";
+      const tasks = listTasks();
+      if (tasks.length === 0) return "No scheduled tasks.";
+      return tasks
+        .map(
+          (t) =>
+            `[${t.id}] ${t.status.toUpperCase()} | type=${t.type} | runAt=${t.runAt}${t.interval ? ` | every ${t.interval / 60000}min` : ""} | config=${t.config ?? "—"}`
+        )
+        .join("\n");
     } catch (e: any) {
-      return `Failed to check tasks: ${e.message}`;
+      return `Failed to list tasks: ${e.message}`;
     }
   },
   {
-    name: "check_tasks",
-    description: "Checks the status of scheduled tasks.",
+    name: "list_tasks",
+    description: "Lists all scheduled tasks (pending, running, success) with their IDs and status.",
     schema: z.object({}),
+  }
+);
+
+export const cancelTaskTool = tool(
+  async ({ taskId }: { taskId: number }) => {
+    try {
+      cancelTask(taskId);
+      return `Task ${taskId} cancelled.`;
+    } catch (e: any) {
+      return `Failed to cancel task: ${e.message}`;
+    }
+  },
+  {
+    name: "cancel_task",
+    description: "Cancels and removes a scheduled task by its numeric ID.",
+    schema: z.object({
+      taskId: z.number().describe("The numeric ID of the task to cancel (from list_tasks)."),
+    }),
   }
 );
 
@@ -258,7 +309,8 @@ export const julesSessionTool = tool(
 export const tools = [
   createProjectWorkspaceTool,
   scheduleTaskTool,
-  checkTasksTool,
+  listTasksTool,
+  cancelTaskTool,
   createFileTool,
   readFileTool,
   listDirectoryTool,
