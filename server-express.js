@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const next = require('next');
 require('dotenv').config();
 
@@ -17,6 +17,101 @@ const PORT = process.env.PORT || 3000;
 const WORKSPACE_PATH = path.join(process.cwd(), 'workspace');
 const CLINE_BIN = path.join(process.cwd(), 'node_modules', '.bin', 'cline');
 const CLINE_CONFIG = path.join(WORKSPACE_PATH, '.cline');
+
+function resolveWorkspacePath(inputPath) {
+  if (!inputPath || typeof inputPath !== 'string') {
+    throw new Error("Le paramètre 'path' est requis.");
+  }
+
+  const normalizedPath = path.normalize(inputPath.trim());
+  const absolutePath = path.resolve(WORKSPACE_PATH, normalizedPath);
+  const workspaceRoot = path.resolve(WORKSPACE_PATH) + path.sep;
+
+  if (absolutePath !== path.resolve(WORKSPACE_PATH) && !absolutePath.startsWith(workspaceRoot)) {
+    throw new Error("Chemin refusé: accès en dehors du workspace.");
+  }
+
+  return absolutePath;
+}
+
+function runFileTool(tool, parameters = {}) {
+  switch (tool) {
+    case 'create_file': {
+      const filePath = resolveWorkspacePath(parameters.path);
+      const content = parameters.content ?? '';
+      const mode = parameters.mode === 'append' ? 'append' : 'write';
+
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      if (mode === 'append') {
+        fs.appendFileSync(filePath, String(content), 'utf8');
+      } else {
+        fs.writeFileSync(filePath, String(content), 'utf8');
+      }
+
+      return {
+        success: true,
+        tool,
+        result: { path: path.relative(WORKSPACE_PATH, filePath), mode, bytes: Buffer.byteLength(String(content), 'utf8') }
+      };
+    }
+
+    case 'read_file': {
+      const filePath = resolveWorkspacePath(parameters.path);
+      const content = fs.readFileSync(filePath, 'utf8');
+      return {
+        success: true,
+        tool,
+        result: { path: path.relative(WORKSPACE_PATH, filePath), content }
+      };
+    }
+
+    case 'list_directory': {
+      const dirPath = resolveWorkspacePath(parameters.path || '.');
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true }).map((entry) => ({
+        name: entry.name,
+        type: entry.isDirectory() ? 'directory' : 'file'
+      }));
+
+      return {
+        success: true,
+        tool,
+        result: { path: path.relative(WORKSPACE_PATH, dirPath) || '.', entries }
+      };
+    }
+
+    case 'delete_file': {
+      const filePath = resolveWorkspacePath(parameters.path);
+      fs.unlinkSync(filePath);
+      return {
+        success: true,
+        tool,
+        result: { path: path.relative(WORKSPACE_PATH, filePath), deleted: true }
+      };
+    }
+
+    case 'execute_command': {
+      const command = parameters.command;
+      if (!command || typeof command !== 'string') {
+        throw new Error("Le paramètre 'command' est requis.");
+      }
+
+      const result = execSync(command, {
+        cwd: WORKSPACE_PATH,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      return {
+        success: true,
+        tool,
+        result: { command, output: result }
+      };
+    }
+
+    default:
+      throw new Error(`Outil non supporté: ${tool}`);
+  }
+}
 
 // Enable CORS for Netlify
 app.use(cors({
@@ -101,6 +196,19 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
+app.post('/api/tools', (req, res) => {
+  try {
+    const { tool, parameters } = req.body || {};
+    const output = runFileTool(tool, parameters);
+    return res.json(output);
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      error: error.message || 'Tool execution failed',
+    });
+  }
+});
+
 // Auth endpoints
 app.post('/api/auth/login', (req, res) => {
   const appPassword = process.env.APP_PASSWORD;
@@ -139,6 +247,26 @@ app.post('/api/chat', async (req, res) => {
     const userMessage = messages[messages.length - 1].content;
 
     console.log('[API] Received message:', userMessage);
+
+    // OpenClaw-compatible direct tool execution:
+    // send a JSON message like:
+    // {"tool":"create_file","parameters":{"path":"todo.txt","content":"hello","mode":"write"}}
+    const trimmedMessage = typeof userMessage === 'string' ? userMessage.trim() : '';
+    if (trimmedMessage.startsWith('{') && trimmedMessage.endsWith('}')) {
+      try {
+        const parsedToolCall = JSON.parse(trimmedMessage);
+        if (parsedToolCall.tool) {
+          const toolResult = runFileTool(parsedToolCall.tool, parsedToolCall.parameters || {});
+          return res.json({
+            role: 'assistant',
+            type: 'tool_result',
+            ...toolResult,
+          });
+        }
+      } catch (e) {
+        // Not a valid tool call, continue to Cline flow
+      }
+    }
 
     // Set headers for SSE
     res.setHeader('Content-Type', 'text/event-stream');
