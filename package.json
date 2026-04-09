@@ -1,0 +1,11 @@
+{
+  "name": "nudgebot-monorepo",
+  "version": "1.0.0",
+  "scripts": {
+    "build:frontend": "cd frontend && npm install && npm run build",
+    "build:backend": "cd backend && npm install --legacy-peer-deps && npx tsc",
+    "build": "npm run build:frontend && npm run build:backend",
+    "start": "cd backend && node dist/server.js",
+    "dev": "cd backend && npx tsx src/server.ts"
+  }
+}

@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: nudgebot
+    env: node
+    buildCommand: "npm run build"
+    startCommand: "npm start"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        value: /data/nudgebot.sqlite
+      - key: OPENROUTER_API_KEY
+        value: placeholder_key
+      - key: DEEPSEEK_API_KEY
+        value: placeholder_key
+    disk:
+      name: nudgebot-data
+      mountPath: /data
+      sizeGB: 1
