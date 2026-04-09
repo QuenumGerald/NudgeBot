@@ -59,7 +59,7 @@ router.post('/', async (req: Request, res: ExpressResponse) => {
       throw new Error('LLM API key not configured');
     }
 
-    const agent = getAgent(provider, model, apiKey);
+    const agent = await getAgent(provider, model, apiKey);
 
     console.log('[chat] streaming start');
 

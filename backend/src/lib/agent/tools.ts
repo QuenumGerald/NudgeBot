@@ -12,6 +12,18 @@ const blazer = new (blazerjob as any).BlazeJob({
 });
 const exec = promisify(execCallback);
 
+const getProjectsRoot = () => {
+  const base = (process.env.NUDGEBOT_WORKDIR || path.join(process.cwd(), "workspace")).trim();
+  return path.resolve(base, "projects");
+};
+
+const normalizeProjectName = (projectName: string) =>
+  projectName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "general";
+
 const resolveSafePath = (requestedPath: string) => {
   const workspaceRoot = process.cwd();
   const resolvedPath = path.resolve(workspaceRoot, requestedPath);
@@ -24,8 +36,29 @@ const resolveSafePath = (requestedPath: string) => {
   return resolvedPath;
 };
 
+export const createProjectWorkspaceTool = tool(
+  async ({ projectName }: { projectName: string }) => {
+    try {
+      const projectsRoot = getProjectsRoot();
+      const normalized = normalizeProjectName(projectName);
+      const projectDir = path.join(projectsRoot, normalized);
+      await fs.mkdir(projectDir, { recursive: true });
+      return `Project workspace ready: ${projectDir}`;
+    } catch (e: any) {
+      return `Failed to create project workspace: ${e.message}`;
+    }
+  },
+  {
+    name: "create_project_workspace",
+    description: "Creates (or reuses) a dedicated working subfolder for a project under the NudgeBot workspace.",
+    schema: z.object({
+      projectName: z.string().describe("Project name used to create a normalized subfolder."),
+    }),
+  }
+);
+
 export const scheduleTaskTool = tool(
-  async ({ taskName, delay, payload }: { taskName: string, delay: number, payload: any }) => {
+  async ({ taskName, delay, payload }: { taskName: string; delay: number; payload: any }) => {
     try {
       const runAt = Date.now() + delay;
       await blazer.schedule(taskName, payload, runAt);
@@ -48,9 +81,7 @@ export const scheduleTaskTool = tool(
 export const checkTasksTool = tool(
   async () => {
     try {
-      // Basic implementation; depends on blazerjob API specifics.
-      // Assuming a generic status check if direct querying isn't exposed.
-      return `Blazerjob scheduler is active and managing database tasks.`;
+      return "Blazerjob scheduler is active and managing database tasks.";
     } catch (e: any) {
       return `Failed to check tasks: ${e.message}`;
     }
@@ -63,7 +94,7 @@ export const checkTasksTool = tool(
 );
 
 export const createFileTool = tool(
-  async ({ path: filePath, content, mode }: { path: string, content: string, mode: "write" | "append" }) => {
+  async ({ path: filePath, content, mode }: { path: string; content: string; mode: "write" | "append" }) => {
     try {
       const resolvedPath = resolveSafePath(filePath);
       await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
@@ -111,9 +142,7 @@ export const listDirectoryTool = tool(
     try {
       const resolvedPath = resolveSafePath(dirPath || ".");
       const items = await fs.readdir(resolvedPath, { withFileTypes: true });
-      return items
-        .map((item) => `${item.isDirectory() ? "[DIR]" : "[FILE]"} ${item.name}`)
-        .join("\n");
+      return items.map((item) => `${item.isDirectory() ? "[DIR]" : "[FILE]"} ${item.name}`).join("\n");
     } catch (e: any) {
       return `Failed to list directory: ${e.message}`;
     }
@@ -173,7 +202,61 @@ export const executeCommandTool = tool(
   }
 );
 
+export const julesSessionTool = tool(
+  async ({ prompt, githubRepository, baseBranch, autoPr }: { prompt: string; githubRepository: string; baseBranch: string; autoPr: boolean }) => {
+    if (!process.env.JULES_API_KEY) {
+      return "JULES_API_KEY is missing. Configure it before using this tool.";
+    }
+
+    try {
+      const { jules } = await import("@google/jules-sdk");
+      const session = await jules.session({
+        prompt,
+        source: { github: githubRepository, baseBranch },
+        autoPr,
+      });
+
+      const progress: string[] = [];
+      for await (const activity of session.stream()) {
+        if (activity.type === "progressUpdated") {
+          progress.push(activity.title || "Progress updated");
+        }
+        if (activity.type === "sessionCompleted" || activity.type === "sessionFailed") {
+          break;
+        }
+      }
+
+      const outcome: any = await session.result();
+      const prUrl = outcome?.pullRequest?.url || "";
+
+      return JSON.stringify(
+        {
+          sessionId: session.id,
+          progress,
+          pullRequestUrl: prUrl || null,
+          state: outcome?.state || null,
+        },
+        null,
+        2
+      );
+    } catch (e: any) {
+      return `Failed to run Jules session: ${e.message}`;
+    }
+  },
+  {
+    name: "run_jules_session",
+    description: "Launches a Google Jules coding session and returns progress plus the resulting PR URL when available.",
+    schema: z.object({
+      prompt: z.string().describe("Task prompt sent to Jules."),
+      githubRepository: z.string().describe("GitHub repository in owner/repo format."),
+      baseBranch: z.string().default("main").describe("Base branch for Jules work."),
+      autoPr: z.boolean().default(true).describe("Whether Jules should automatically create a pull request."),
+    }),
+  }
+);
+
 export const tools = [
+  createProjectWorkspaceTool,
   scheduleTaskTool,
   checkTasksTool,
   createFileTool,
@@ -181,4 +264,5 @@ export const tools = [
   listDirectoryTool,
   deleteFileTool,
   executeCommandTool,
+  julesSessionTool,
 ];

@@ -2,16 +2,16 @@ import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
-import { tools } from "./tools";
+import { tools as localTools } from "./tools";
 import { setupMCP } from "./mcp";
 
 export const createLLM = (provider: string, modelName: string, apiKey: string) => {
-  if (provider === 'openrouter') {
+  if (provider === "openrouter") {
     return new ChatOpenAI({
-      model: modelName || 'deepseek/deepseek-chat:free',
+      model: modelName || "deepseek/deepseek-chat:free",
       apiKey,
       configuration: {
-        baseURL: "https://openrouter.ai/api/v1"
+        baseURL: "https://openrouter.ai/api/v1",
       },
       temperature: 0.7,
       streaming: false,
@@ -19,14 +19,14 @@ export const createLLM = (provider: string, modelName: string, apiKey: string) =
     });
   }
 
-  if (provider === 'deepseek') {
+  if (provider === "deepseek") {
     const rawBaseUrl = (process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").trim();
     const baseURL = rawBaseUrl.replace(/\/+$/, "");
     return new ChatOpenAI({
-      model: modelName || 'deepseek-chat',
+      model: modelName || "deepseek-chat",
       apiKey,
       configuration: {
-        baseURL
+        baseURL,
       },
       temperature: 0.7,
       streaming: false,
@@ -36,7 +36,7 @@ export const createLLM = (provider: string, modelName: string, apiKey: string) =
   }
 
   return new ChatOpenAI({
-    model: modelName || 'gpt-3.5-turbo',
+    model: modelName || "gpt-3.5-turbo",
     apiKey,
     temperature: 0.7,
     streaming: false,
@@ -44,32 +44,40 @@ export const createLLM = (provider: string, modelName: string, apiKey: string) =
   });
 };
 
-// In a real application, setupMCP would be awaited and tools appended,
-// but for sync getAgent call we use the statically defined tools.
-export const getAgent = (provider: string, modelName: string, apiKey: string) => {
+export const getAgent = async (provider: string, modelName: string, apiKey: string) => {
   const graphBuilder = new StateGraph(MessagesAnnotation);
 
   const llm = createLLM(provider, modelName, apiKey);
+  const mcpTools = await setupMCP();
+  const allTools = [...localTools, ...mcpTools];
+
   let toolsEnabled = false;
 
   let llmWithTools: any = llm;
   try {
-    llmWithTools = llm.bindTools(tools);
-    toolsEnabled = true;
+    llmWithTools = llm.bindTools(allTools);
+    toolsEnabled = allTools.length > 0;
   } catch (e) {
-    console.error('Failed to bind tools to LLM, continuing without tools:', e);
+    console.error("Failed to bind tools to LLM, continuing without tools:", e);
   }
+
+  const systemPrompt = [
+    "Tu es NudgeBot, un assistant IA utile.",
+    "Affiche toujours une courte section 'Réflexion' (résumée, actionnable, sans divulguer de raisonnement sensible détaillé) avant ta réponse finale.",
+    "Tu dois gérer un dossier de travail par projet : utilise d'abord l'outil create_project_workspace pour créer/résoudre le sous-dossier du projet avant de manipuler des fichiers.",
+    "Privilégie les outils MCP disponibles pour GitHub, Jira, Confluence, Google Calendar, Render, Netlify et Fetch quand c'est pertinent.",
+  ].join(" ");
 
   const callModel = async (state: typeof MessagesAnnotation.State) => {
     const response = await llmWithTools.invoke([
-      new SystemMessage("You are NudgeBot, a helpful AI assistant. You have access to tools. If you need to use a tool, use it."),
+      new SystemMessage(systemPrompt),
       ...state.messages,
     ]);
     return { messages: [response] };
   };
 
   if (toolsEnabled) {
-    const toolNode = new ToolNode(tools);
+    const toolNode = new ToolNode(allTools);
 
     const shouldContinue = (state: typeof MessagesAnnotation.State) => {
       const messages = state.messages;
