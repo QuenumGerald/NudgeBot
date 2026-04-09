@@ -26,6 +26,30 @@ curl -X POST https://nudgebot-v2.onrender.com/api/chat \
   -d '{"messages": [{"role": "user", "content": "Hello!"}]}'
 ```
 
+
+## 🧰 Outils de fichiers (OpenClaw-like)
+
+NudgeBot peut maintenant exécuter des appels d'outils JSON directs via `/api/chat` (ou `/api/tools` sur le serveur Express) :
+
+- `create_file` — paramètres: `path`, `content`, `mode` (`write` ou `append`)
+- `read_file` — paramètres: `path`
+- `list_directory` — paramètres: `path`
+- `delete_file` — paramètres: `path`
+- `execute_command` — paramètres: `command`
+
+Exemple :
+
+```json
+{
+  "tool": "create_file",
+  "parameters": {
+    "path": "notes/todo.txt",
+    "content": "Acheter du lait\n",
+    "mode": "append"
+  }
+}
+```
+
 ## 🛠 Architecture
 
 - **Backend**: Express.js pur (pas de Next.js)
