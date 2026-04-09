@@ -66,6 +66,11 @@ export default function Home() {
         })
       });
 
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Request failed with status ${response.status}`);
+      }
+
       if (!response.body) throw new Error("No response body");
 
       const reader = response.body.getReader();
@@ -90,35 +95,36 @@ export default function Home() {
           if (chunk.startsWith('data: ')) {
             const dataStr = chunk.replace('data: ', '').trim();
             if (dataStr) {
-                try {
-                  const data = JSON.parse(dataStr);
+              try {
+                const data = JSON.parse(dataStr);
 
-                  if (data.type === 'thinking') {
-                    setIsThinking(false);
-                  } else if (data.type === 'delta') {
-                    assistantMessage.content += data.content;
-                    setMessages([...newMessages, { ...assistantMessage }]);
-                  } else if (data.type === 'tool_start') {
-                    assistantMessage.tools = assistantMessage.tools || [];
-                    assistantMessage.tools.push({ name: data.tool_name, input: data.input });
-                    setMessages([...newMessages, { ...assistantMessage }]);
-                  } else if (data.type === 'tool_result') {
-                    assistantMessage.tools = assistantMessage.tools || [];
-                    const toolIndex = assistantMessage.tools.findIndex(t => t.name === data.tool_name && !t.result);
-                    if (toolIndex !== -1) {
-                        assistantMessage.tools[toolIndex].result = data.result;
-                    }
-                    setMessages([...newMessages, { ...assistantMessage }]);
-                  } else if (data.type === 'error') {
-                    console.error("Chat Error:", data.error);
-                    assistantMessage.content += `\n\n**Error:** ${data.error}`;
-                    setMessages([...newMessages, { ...assistantMessage }]);
-                  } else if (data.type === 'done') {
-                    setIsThinking(false);
+                if (data.type === 'thinking') {
+                  setIsThinking(false);
+                } else if (data.type === 'delta') {
+                  assistantMessage.content += data.content;
+                  setMessages([...newMessages, { ...assistantMessage }]);
+                } else if (data.type === 'tool_start') {
+                  assistantMessage.tools = assistantMessage.tools || [];
+                  assistantMessage.tools.push({ name: data.tool_name, input: data.input });
+                  setMessages([...newMessages, { ...assistantMessage }]);
+                } else if (data.type === 'tool_result') {
+                  assistantMessage.tools = assistantMessage.tools || [];
+                  const toolIndex = assistantMessage.tools.findIndex(t => t.name === data.tool_name && !t.result);
+                  if (toolIndex !== -1) {
+                    assistantMessage.tools[toolIndex].result = data.result;
                   }
-                } catch (e) {
-                  console.error("Error parsing SSE data:", e, "Chunk:", chunk);
+                  setMessages([...newMessages, { ...assistantMessage }]);
+                } else if (data.type === 'error') {
+                  console.error("Chat Error:", data.error);
+                  assistantMessage.content += `\n\n**Error:** ${data.error}`;
+                  setMessages([...newMessages, { ...assistantMessage }]);
+                  setIsThinking(false);
+                } else if (data.type === 'done') {
+                  setIsThinking(false);
                 }
+              } catch (e) {
+                console.error("Error parsing SSE data:", e, "Chunk:", chunk);
+              }
             }
           }
           boundary = buffer.indexOf('\n\n');
@@ -180,37 +186,36 @@ export default function Home() {
               <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
 
                 {msg.role === 'assistant' && msg.tools && msg.tools.length > 0 && (
-                   <div className="flex flex-col space-y-2 mb-2 w-full max-w-3xl">
-                     {msg.tools.map((tool, tIdx) => (
-                       <div key={tIdx} className="bg-muted/50 border border-border p-3 rounded-xl text-sm text-muted-foreground max-w-fit">
-                         <div className="flex items-center space-x-2 font-mono text-xs text-primary mb-1">
-                           <Wrench className="w-3 h-3" />
-                           <span>{tool.name}</span>
-                         </div>
-                         <div className="font-mono text-xs opacity-80">
-                           Input: {JSON.stringify(tool.input)}
-                         </div>
-                         {tool.result && (
-                            <div className="font-mono text-xs mt-2 border-t border-border/50 pt-2 opacity-80">
-                              Result: {JSON.stringify(tool.result).slice(0, 100)}{JSON.stringify(tool.result).length > 100 ? '...' : ''}
-                            </div>
-                         )}
-                       </div>
-                     ))}
-                   </div>
+                  <div className="flex flex-col space-y-2 mb-2 w-full max-w-3xl">
+                    {msg.tools.map((tool, tIdx) => (
+                      <div key={tIdx} className="bg-muted/50 border border-border p-3 rounded-xl text-sm text-muted-foreground max-w-fit">
+                        <div className="flex items-center space-x-2 font-mono text-xs text-primary mb-1">
+                          <Wrench className="w-3 h-3" />
+                          <span>{tool.name}</span>
+                        </div>
+                        <div className="font-mono text-xs opacity-80">
+                          Input: {JSON.stringify(tool.input)}
+                        </div>
+                        {tool.result && (
+                          <div className="font-mono text-xs mt-2 border-t border-border/50 pt-2 opacity-80">
+                            Result: {JSON.stringify(tool.result).slice(0, 100)}{JSON.stringify(tool.result).length > 100 ? '...' : ''}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
 
                 {msg.content && (
-                  <div className={`max-w-[90%] md:max-w-3xl p-4 rounded-xl shadow-sm ${
-                    msg.role === 'user'
+                  <div className={`max-w-[90%] md:max-w-3xl p-4 rounded-xl shadow-sm ${msg.role === 'user'
                       ? 'bg-primary text-primary-foreground rounded-br-none'
                       : 'bg-card border border-border text-foreground rounded-bl-none'
-                  }`}>
+                    }`}>
                     <div className={`prose dark:prose-invert max-w-none text-sm break-words ${msg.role === 'user' ? 'prose-p:text-primary-foreground prose-headings:text-primary-foreground prose-strong:text-primary-foreground' : ''}`}>
                       {msg.role === 'assistant' ? (
-                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                       ) : (
-                         msg.content
+                        msg.content
                       )}
                     </div>
                   </div>

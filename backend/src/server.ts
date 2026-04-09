@@ -7,7 +7,6 @@ import { getDb } from './lib/db';
 dotenv.config();
 
 import authRouter from './routes/auth';
-import settingsRouter from './routes/settings';
 import chatRouter from './routes/chat';
 
 const app = express();
@@ -19,7 +18,6 @@ app.use(express.json());
 getDb().catch(console.error);
 
 app.use('/api/auth', authRouter);
-app.use('/api/settings', settingsRouter);
 app.use('/api/chat', chatRouter);
 
 const frontendDistPath = path.join(__dirname, '../../frontend/dist');

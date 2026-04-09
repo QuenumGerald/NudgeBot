@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input';
 import { Brain } from 'lucide-react';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -14,11 +13,11 @@ export default function Login() {
   const handleLogin = async () => {
     try {
       setError('');
-      const res = await api.post('/auth/login', { email, password });
+      const res = await api.post('/auth/login', { password });
       localStorage.setItem('user', JSON.stringify(res.user));
       navigate('/');
     } catch (err: any) {
-      setError('Invalid credentials or server error.');
+      setError('Invalid password or server error.');
     }
   };
 
@@ -40,19 +39,10 @@ export default function Login() {
 
         <div className="space-y-4" onKeyDown={handleKeyDown}>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Email</label>
-            <Input
-              type="email"
-              placeholder="admin@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">Password</label>
             <Input
               type="password"
-              placeholder="••••••••"
+              placeholder="Enter admin password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />

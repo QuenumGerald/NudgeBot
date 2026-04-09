@@ -3,3 +3,10 @@ backend/dist
 frontend/node_modules
 frontend/dist
 .env
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite-shm
+*.sqlite-wal
+backend/.env
+frontend/.env

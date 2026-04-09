@@ -1,12 +1,36 @@
-import { Router, Request, Response } from 'express';
-import { getDb } from '../lib/db';
+import { Router, Request, Response as ExpressResponse } from 'express';
+import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import { getAgent } from '../lib/agent/graph';
 
 const router = Router();
 
-router.post('/', async (req: Request, res: Response) => {
+const getLLMConfigFromEnv = () => {
+  const provider = (process.env.LLM_PROVIDER || 'deepseek').trim();
+  const model = (process.env.LLM_MODEL || '').trim();
+
+  let apiKey = '';
+  if (provider === 'deepseek') {
+    apiKey = (process.env.DEEPSEEK_API_KEY || '').trim();
+  } else if (provider === 'openrouter') {
+    apiKey = (process.env.OPENROUTER_API_KEY || '').trim();
+  } else if (provider === 'openai') {
+    apiKey = (process.env.OPENAI_API_KEY || '').trim();
+  } else {
+    apiKey = (process.env.LLM_API_KEY || '').trim();
+  }
+
+  return { provider, model, apiKey };
+};
+
+router.post('/', async (req: Request, res: ExpressResponse) => {
   // We expect user_id for fetching settings, and messages array
   const { user_id, messages } = req.body;
+
+  console.log('[chat] request', {
+    hasMessages: Array.isArray(messages),
+    messageCount: Array.isArray(messages) ? messages.length : 0,
+    user_id,
+  });
 
   if (!messages || !Array.isArray(messages)) {
     res.status(400).json({ error: 'messages array is required' });
@@ -17,73 +41,49 @@ router.post('/', async (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  (res as any).flushHeaders?.();
 
   try {
-    const db = await getDb();
-    // Default to admin user id 1 if not provided
-    const userId = user_id || 1;
-    const settings = await db.get('SELECT * FROM settings WHERE user_id = ?', userId);
+    // Let the client know the stream is alive as early as possible
+    res.write(`data: ${JSON.stringify({ type: 'thinking' })}\n\n`);
 
-    if (!settings) {
-      throw new Error('User settings not found');
-    }
+    const { provider, model, apiKey } = getLLMConfigFromEnv();
 
-    const { llm_provider, llm_model, llm_api_key } = settings;
+    console.log('[chat] llm config', {
+      provider,
+      model,
+      hasApiKey: Boolean(apiKey),
+    });
 
-    if (!llm_api_key) {
+    if (!apiKey) {
       throw new Error('LLM API key not configured');
     }
 
-    const agent = getAgent(llm_provider, llm_model, llm_api_key);
+    const agent = getAgent(provider, model, apiKey);
 
-    // Send thinking event
-    res.write(`data: ${JSON.stringify({ type: 'thinking' })}\n\n`);
+    console.log('[chat] streaming start');
 
-    const abortController = new AbortController();
-    req.on('close', () => {
-      abortController.abort();
+    const langchainMessages = messages.map((m: any) => {
+      if (m?.role === 'assistant') return new AIMessage(String(m?.content ?? ''));
+      return new HumanMessage(String(m?.content ?? ''));
     });
 
-    // Stream from LangGraph
-    const stream = await agent.streamEvents(
-      { messages },
-      { version: "v2", signal: abortController.signal }
-    );
+    const result: any = await agent.invoke({ messages: langchainMessages });
 
-    for await (const event of stream) {
-      if (abortController.signal.aborted) break;
+    const outMessages = Array.isArray(result?.messages) ? result.messages : [];
+    const last = outMessages[outMessages.length - 1];
+    const content = typeof last?.content === 'string' ? last.content : JSON.stringify(last?.content ?? '');
 
-      if (event.event === "on_chat_model_stream") {
-        const content = event.data?.chunk?.content;
-        if (content) {
-           res.write(`data: ${JSON.stringify({ type: 'delta', content })}\n\n`);
-        }
-      } else if (event.event === "on_tool_start") {
-        res.write(`data: ${JSON.stringify({
-          type: 'tool_start',
-          tool_name: event.name,
-          input: event.data?.input
-        })}\n\n`);
-      } else if (event.event === "on_tool_end") {
-        res.write(`data: ${JSON.stringify({
-          type: 'tool_result',
-          tool_name: event.name,
-          result: event.data?.output
-        })}\n\n`);
-      }
+    if (content) {
+      res.write(`data: ${JSON.stringify({ type: 'delta', content })}\n\n`);
     }
 
     res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
     res.end();
-
   } catch (error: any) {
     console.error('Chat API Error:', error);
-    if (!res.headersSent) {
-        res.status(500).json({ error: error.message || 'Server Error' });
-    } else {
-        res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
-        res.end();
-    }
+    res.write(`data: ${JSON.stringify({ type: 'error', error: error.message || 'Server Error' })}\n\n`);
+    res.end();
   }
 });
 

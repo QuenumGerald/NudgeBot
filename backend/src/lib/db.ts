@@ -38,23 +38,6 @@ async function initializeDb(db: Database) {
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
       );
     `);
-
-    const defaultUser = await db.get('SELECT id FROM users WHERE email = ?', 'admin@example.com');
-    if (!defaultUser) {
-      await db.run(
-        'INSERT INTO users (email, password_hash) VALUES (?, ?)',
-        'admin@example.com',
-        'password123'
-      );
-      const user = await db.get('SELECT id FROM users WHERE email = ?', 'admin@example.com');
-      await db.run(
-        'INSERT INTO settings (user_id, llm_provider, llm_model, llm_api_key) VALUES (?, ?, ?, ?)',
-        user.id,
-        'openrouter',
-        'deepseek/deepseek-chat:free',
-        ''
-      );
-    }
   } catch (error) {
     console.error('Error initializing database:', error);
     throw error;
