@@ -1,16 +1,29 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import * as blazerjob from "blazerjob";
 import path from "path";
 import { promises as fs } from "fs";
 import { exec as execCallback } from "child_process";
 import { promisify } from "util";
+import {
+  scheduleOnce,
+  scheduleRecurring,
+  listTasks,
+  cancelTask,
+} from "../blazerJobManager";
 
-// Initialize blazerjob scheduler using the sqlite database
-const blazer = new (blazerjob as any).BlazeJob({
-  dbPath: process.env.DATABASE_URL || "nudgebot.sqlite",
-});
 const exec = promisify(execCallback);
+
+const getProjectsRoot = () => {
+  const base = (process.env.NUDGEBOT_WORKDIR || path.join(process.cwd(), "workspace")).trim();
+  return path.resolve(base, "projects");
+};
+
+const normalizeProjectName = (projectName: string) =>
+  projectName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "general";
 
 const resolveSafePath = (requestedPath: string) => {
   const workspaceRoot = process.cwd();
@@ -24,46 +37,115 @@ const resolveSafePath = (requestedPath: string) => {
   return resolvedPath;
 };
 
-export const scheduleTaskTool = tool(
-  async ({ taskName, delay, payload }: { taskName: string, delay: number, payload: any }) => {
+export const createProjectWorkspaceTool = tool(
+  async ({ projectName }: { projectName: string }) => {
     try {
-      const runAt = Date.now() + delay;
-      await blazer.schedule(taskName, payload, runAt);
-      return `Task '${taskName}' scheduled to run in ${delay}ms.`;
+      const projectsRoot = getProjectsRoot();
+      const normalized = normalizeProjectName(projectName);
+      const projectDir = path.join(projectsRoot, normalized);
+      await fs.mkdir(projectDir, { recursive: true });
+      return `Project workspace ready: ${projectDir}`;
+    } catch (e: any) {
+      return `Failed to create project workspace: ${e.message}`;
+    }
+  },
+  {
+    name: "create_project_workspace",
+    description: "Creates (or reuses) a dedicated working subfolder for a project under the NudgeBot workspace.",
+    schema: z.object({
+      projectName: z.string().describe("Project name used to create a normalized subfolder."),
+    }),
+  }
+);
+
+export const scheduleTaskTool = tool(
+  async ({
+    taskName,
+    description,
+    delayMs,
+    intervalMs,
+  }: {
+    taskName: string;
+    description: string;
+    delayMs: number;
+    intervalMs?: number;
+  }) => {
+    try {
+      const noop = async () => {
+        console.log(`[blazer] task '${taskName}' fired: ${description}`);
+      };
+
+      const id = intervalMs && intervalMs > 0
+        ? scheduleRecurring(taskName, noop, intervalMs)
+        : scheduleOnce(taskName, noop, delayMs);
+
+      const kind = intervalMs && intervalMs > 0
+        ? `recurring every ${intervalMs / 60000}min`
+        : `one-off in ${delayMs / 1000}s`;
+
+      return `Task '${taskName}' scheduled (${kind}). ID: ${id}`;
     } catch (e: any) {
       return `Failed to schedule task: ${e.message}`;
     }
   },
   {
     name: "schedule_task",
-    description: "Schedules an asynchronous task using blazerjob. Useful for reminders or deferred actions.",
+    description:
+      "Schedules a named task via BlazerJob. Set intervalMs > 0 for recurring tasks, leave it out for one-off.",
     schema: z.object({
-      taskName: z.string().describe("The name or identifier of the task."),
-      delay: z.number().describe("The delay in milliseconds before the task should run."),
-      payload: z.any().describe("Additional data for the task."),
+      taskName: z.string().describe("Unique name for the task."),
+      description: z.string().describe("Human-readable description logged when the task fires."),
+      delayMs: z.number().describe("Delay in ms before first run (one-off or first recurring run)."),
+      intervalMs: z
+        .number()
+        .optional()
+        .describe("If provided and > 0, the task repeats every intervalMs milliseconds."),
     }),
   }
 );
 
-export const checkTasksTool = tool(
+export const listTasksTool = tool(
   async () => {
     try {
-      // Basic implementation; depends on blazerjob API specifics.
-      // Assuming a generic status check if direct querying isn't exposed.
-      return `Blazerjob scheduler is active and managing database tasks.`;
+      const tasks = listTasks();
+      if (tasks.length === 0) return "No scheduled tasks.";
+      return tasks
+        .map(
+          (t) =>
+            `[${t.id}] ${t.status.toUpperCase()} | type=${t.type} | runAt=${t.runAt}${t.interval ? ` | every ${t.interval / 60000}min` : ""} | config=${t.config ?? "—"}`
+        )
+        .join("\n");
     } catch (e: any) {
-      return `Failed to check tasks: ${e.message}`;
+      return `Failed to list tasks: ${e.message}`;
     }
   },
   {
-    name: "check_tasks",
-    description: "Checks the status of scheduled tasks.",
+    name: "list_tasks",
+    description: "Lists all scheduled tasks (pending, running, success) with their IDs and status.",
     schema: z.object({}),
   }
 );
 
+export const cancelTaskTool = tool(
+  async ({ taskId }: { taskId: number }) => {
+    try {
+      cancelTask(taskId);
+      return `Task ${taskId} cancelled.`;
+    } catch (e: any) {
+      return `Failed to cancel task: ${e.message}`;
+    }
+  },
+  {
+    name: "cancel_task",
+    description: "Cancels and removes a scheduled task by its numeric ID.",
+    schema: z.object({
+      taskId: z.number().describe("The numeric ID of the task to cancel (from list_tasks)."),
+    }),
+  }
+);
+
 export const createFileTool = tool(
-  async ({ path: filePath, content, mode }: { path: string, content: string, mode: "write" | "append" }) => {
+  async ({ path: filePath, content, mode }: { path: string; content: string; mode: "write" | "append" }) => {
     try {
       const resolvedPath = resolveSafePath(filePath);
       await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
@@ -111,9 +193,7 @@ export const listDirectoryTool = tool(
     try {
       const resolvedPath = resolveSafePath(dirPath || ".");
       const items = await fs.readdir(resolvedPath, { withFileTypes: true });
-      return items
-        .map((item) => `${item.isDirectory() ? "[DIR]" : "[FILE]"} ${item.name}`)
-        .join("\n");
+      return items.map((item) => `${item.isDirectory() ? "[DIR]" : "[FILE]"} ${item.name}`).join("\n");
     } catch (e: any) {
       return `Failed to list directory: ${e.message}`;
     }
@@ -173,12 +253,68 @@ export const executeCommandTool = tool(
   }
 );
 
+export const julesSessionTool = tool(
+  async ({ prompt, githubRepository, baseBranch, autoPr }: { prompt: string; githubRepository: string; baseBranch: string; autoPr: boolean }) => {
+    if (!process.env.JULES_API_KEY) {
+      return "JULES_API_KEY is missing. Configure it before using this tool.";
+    }
+
+    try {
+      const { jules } = await import("@google/jules-sdk");
+      const session = await jules.session({
+        prompt,
+        source: { github: githubRepository, baseBranch },
+        autoPr,
+      });
+
+      const progress: string[] = [];
+      for await (const activity of session.stream()) {
+        if (activity.type === "progressUpdated") {
+          progress.push(activity.title || "Progress updated");
+        }
+        if (activity.type === "sessionCompleted" || activity.type === "sessionFailed") {
+          break;
+        }
+      }
+
+      const outcome: any = await session.result();
+      const prUrl = outcome?.pullRequest?.url || "";
+
+      return JSON.stringify(
+        {
+          sessionId: session.id,
+          progress,
+          pullRequestUrl: prUrl || null,
+          state: outcome?.state || null,
+        },
+        null,
+        2
+      );
+    } catch (e: any) {
+      return `Failed to run Jules session: ${e.message}`;
+    }
+  },
+  {
+    name: "run_jules_session",
+    description: "Launches a Google Jules coding session and returns progress plus the resulting PR URL when available.",
+    schema: z.object({
+      prompt: z.string().describe("Task prompt sent to Jules."),
+      githubRepository: z.string().describe("GitHub repository in owner/repo format."),
+      baseBranch: z.string().default("main").describe("Base branch for Jules work."),
+      autoPr: z.boolean().default(true).describe("Whether Jules should automatically create a pull request."),
+    }),
+  }
+);
+
 export const tools = [
+  createProjectWorkspaceTool,
   scheduleTaskTool,
-  checkTasksTool,
+  listTasksTool,
+  cancelTaskTool,
   createFileTool,
   readFileTool,
   listDirectoryTool,
   deleteFileTool,
   executeCommandTool,
+  julesSessionTool,
 ];

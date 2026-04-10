@@ -99,7 +99,7 @@ export default function Home() {
                 const data = JSON.parse(dataStr);
 
                 if (data.type === 'thinking') {
-                  setIsThinking(false);
+                  setIsThinking(true);
                 } else if (data.type === 'delta') {
                   assistantMessage.content += data.content;
                   setMessages([...newMessages, { ...assistantMessage }]);
