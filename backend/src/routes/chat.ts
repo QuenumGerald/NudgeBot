@@ -80,7 +80,7 @@ router.post('/', async (req: Request, res: ExpressResponse) => {
     await sessionManager.loadUserSession(userId);
     const previousContext = sessionManager.getContextSummaryForPrompt(userId);
 
-    const agent = await getAgent(provider, model, apiKey, enabledIntegrations, userId, previousContext);
+    const agent = await getAgent(provider, model, apiKey, enabledIntegrations, String(user_id ?? ''), previousContext);
 
     console.log('[chat] streaming start');
 

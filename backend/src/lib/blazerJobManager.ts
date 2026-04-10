@@ -26,18 +26,28 @@ export interface TaskRow {
 
 let blazer: InstanceType<typeof BlazeJob> | null = null;
 
-const getDbPath = () =>
-  path.resolve(
-    process.env.DATABASE_URL || path.join(process.cwd(), "nudgebot.sqlite")
-  );
+// Use a dedicated file to avoid WAL conflicts with the main sqlite (async) connection
+const getDbPath = () => {
+  const base = process.env.DATABASE_URL || path.join(process.cwd(), "nudgebot.sqlite");
+  const dir = path.dirname(path.resolve(base));
+  return path.join(dir, "blazer.sqlite");
+};
 
 export const getBlazer = (): InstanceType<typeof BlazeJob> => {
   if (!blazer) {
     blazer = new BlazeJob({ dbPath: getDbPath(), concurrency: 5 });
-    blazer.start();
-    console.log("[blazer] scheduler started");
+    // start() is NOT called here — called lazily on first schedule()
   }
   return blazer;
+};
+
+const ensureStarted = (): InstanceType<typeof BlazeJob> => {
+  const b = getBlazer();
+  if (!(b as any).timer) {
+    b.start();
+    console.log("[blazer] scheduler started");
+  }
+  return b;
 };
 
 /**
@@ -49,7 +59,7 @@ export const scheduleOnce = (
   fn: () => Promise<void>,
   delayMs: number
 ): number => {
-  return getBlazer().schedule(fn, {
+  return ensureStarted().schedule(fn, {
     runAt: new Date(Date.now() + delayMs),
     type: "custom",
     config: { name },
@@ -71,7 +81,7 @@ export const scheduleRecurring = (
   // Remove stale rows from previous runs
   cancelTasksByName(name);
 
-  return getBlazer().schedule(fn, {
+  return ensureStarted().schedule(fn, {
     runAt: new Date(Date.now() + intervalMs),
     interval: intervalMs,
     type: "custom",

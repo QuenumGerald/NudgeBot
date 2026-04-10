@@ -40,10 +40,12 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
+  // Ne pas quitter le processus
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Ne pas quitter le processus
 });
 
 app.listen(PORT, () => {

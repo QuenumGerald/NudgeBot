@@ -4,7 +4,7 @@
  */
 
 import { getGitHubContextManager, initGitHubContextManager, CompressedContext, ConversationContext } from "./githubContextManager";
-import { scheduleRecurring } from "./blazerJobManager";
+import * as cron from 'node-cron';
 
 interface SessionData {
   context: ConversationContext & Partial<CompressedContext>;
@@ -27,6 +27,7 @@ const TOPIC_PATTERNS: Array<[string[], string]> = [
 class RenderSessionManager {
   private sessions = new Map<string, SessionData>();
   private isShuttingDown = false;
+  private cronTask: cron.ScheduledTask | null = null;
 
   constructor() {
     this.startAutoSave();
@@ -234,15 +235,16 @@ class RenderSessionManager {
   private startAutoSave(): void {
     if (!process.env.GITHUB_CONTEXT_TOKEN) return;
 
-    scheduleRecurring("nudgebot_context_autosave", async () => {
+    // Exécute toutes les heures: "0 * * * *"
+    this.cronTask = cron.schedule('0 * * * *', async () => {
       if (this.isShuttingDown) return;
-      console.log("[session] auto-save triggered by BlazerJob");
+      console.log("[session] auto-save triggered by cron");
       for (const userId of this.sessions.keys()) {
         await this.saveUserSession(userId).catch(console.error);
       }
-    }, AUTO_SAVE_INTERVAL_MS);
+    });
 
-    console.log(`[session] auto-save scheduled every ${AUTO_SAVE_INTERVAL_MS / 60000}min via BlazerJob`);
+    console.log("[session] auto-save scheduled every hour via node-cron");
   }
 
   private registerShutdownHandlers(): void {
@@ -250,6 +252,11 @@ class RenderSessionManager {
       if (this.isShuttingDown) return;
       this.isShuttingDown = true;
       console.log(`[session] ${signal} received — saving all sessions before exit`);
+
+      // Arrête la tâche cron
+      if (this.cronTask) {
+        this.cronTask.stop();
+      }
 
       for (const userId of this.sessions.keys()) {
         await this.saveUserSession(userId, true).catch(console.error);
