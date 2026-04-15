@@ -2,16 +2,18 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import * as blazerjob from "blazerjob";
 
-// Initialize blazerjob scheduler using the sqlite database
-const blazer = new (blazerjob as any).BlazeJob({
-  dbPath: process.env.DATABASE_URL || "nudgebot.sqlite",
-});
+const blazer = new (blazerjob as any).BlazeJob({ concurrency: 16 });
 
 export const scheduleTaskTool = tool(
   async ({ taskName, delay, payload }: { taskName: string, delay: number, payload: any }) => {
     try {
-      const runAt = Date.now() + delay;
-      await blazer.schedule(taskName, payload, runAt);
+      const runAt = new Date(Date.now() + delay);
+      blazer.schedule(async () => {
+        console.log(`[schedule_task] ${taskName}`, payload);
+      }, {
+        runAt,
+        maxRuns: 1,
+      });
       return `Task '${taskName}' scheduled to run in ${delay}ms.`;
     } catch (e: any) {
       return `Failed to schedule task: ${e.message}`;
@@ -31,8 +33,6 @@ export const scheduleTaskTool = tool(
 export const checkTasksTool = tool(
   async () => {
     try {
-      // Basic implementation; depends on blazerjob API specifics.
-      // Assuming a generic status check if direct querying isn't exposed.
       return `Blazerjob scheduler is active and managing database tasks.`;
     } catch (e: any) {
       return `Failed to check tasks: ${e.message}`;

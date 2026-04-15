@@ -21,6 +21,8 @@ Créer `backend/.env` (ou configurer ces variables en production) :
 - `LLM_MODEL=...` (optionnel)
 - `DEEPSEEK_API_KEY=...` / `OPENROUTER_API_KEY=...` / `OPENAI_API_KEY=...`
 - `DATABASE_URL=/data/nudgebot.sqlite` (prod) ou chemin local sqlite
+- `RESEND_API_KEY=...` (pour l'envoi d'emails planifiés)
+- `RESEND_FROM_EMAIL=notifications@ton-domaine.com` (expéditeur Resend vérifié)
 
 ## Démarrage local
 
@@ -41,6 +43,7 @@ npm start
 ## Architecture rapide
 
 - `frontend/` : interface React + Vite.
-- `backend/` : API Express (`/api/auth`, `/api/chat`, `/api/settings`).
+- `backend/` : API Express (`/api/auth`, `/api/chat`, `/api/settings`, `/api/notifications`) + scheduling des envois via BlazeJob (blazerjob).
 - SQLite pour stockage local (`users`, `settings`).
+- `POST /api/notifications/:userId` supporte aussi `recurrence_interval_minutes` et `max_runs` pour les notifications récurrentes.
 

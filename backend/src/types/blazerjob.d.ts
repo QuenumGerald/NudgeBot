@@ -1,7 +1,20 @@
 declare module 'blazerjob' {
-  export class BlazerJob {
-    constructor(config: { dbPath: string });
-    init(): Promise<void>;
-    schedule(taskName: string, payload: any, runAt: number): Promise<void>;
+  export type JobStats = {
+    runs: number;
+    successes: number;
+    failures: number;
+    lastError?: string;
+  };
+
+  export type ScheduleOptions = {
+    runAt: Date;
+    interval?: number;
+    maxRuns?: number;
+    onEnd?: (stats: JobStats) => void;
+  };
+
+  export class BlazeJob {
+    constructor(config?: { concurrency?: number });
+    schedule(task: () => Promise<void> | void, options: ScheduleOptions): void;
   }
 }
