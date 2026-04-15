@@ -12,6 +12,8 @@ dotenv.config();
 import authRouter from './routes/auth';
 import chatRouter from './routes/chat';
 import settingsRouter from './routes/settings';
+import notificationsRouter from './routes/notifications';
+import { startNotificationWorker } from './lib/notifications';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -42,6 +44,9 @@ getDb().catch(console.error);
 app.use('/api/auth', authRouter);
 app.use('/api/chat', requireAuth, chatRouter);
 app.use('/api/settings', requireAuth, settingsRouter);
+app.use('/api/notifications', requireAuth, notificationsRouter);
+
+startNotificationWorker();
 
 const frontendDistPath = path.join(__dirname, '../../frontend/dist');
 app.use(express.static(frontendDistPath));
