@@ -1,6 +1,7 @@
 import { Router, Request, Response as ExpressResponse } from 'express';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import { getAgent } from '../lib/agent/graph';
+import { AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -22,14 +23,18 @@ const getLLMConfigFromEnv = () => {
   return { provider, model, apiKey };
 };
 
-router.post('/', async (req: Request, res: ExpressResponse) => {
-  // We expect user_id for fetching settings, and messages array
-  const { user_id, messages } = req.body;
+type ChatBody = {
+  messages?: Array<{ role?: string; content?: string }>;
+};
+
+router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, ChatBody>, res: ExpressResponse) => {
+  const { messages } = req.body;
+  const userId = req.user?.id;
 
   console.log('[chat] request', {
     hasMessages: Array.isArray(messages),
     messageCount: Array.isArray(messages) ? messages.length : 0,
-    user_id,
+    user_id: userId,
   });
 
   if (!messages || !Array.isArray(messages)) {
@@ -63,12 +68,12 @@ router.post('/', async (req: Request, res: ExpressResponse) => {
 
     console.log('[chat] streaming start');
 
-    const langchainMessages = messages.map((m: any) => {
+    const langchainMessages = messages.map((m) => {
       if (m?.role === 'assistant') return new AIMessage(String(m?.content ?? ''));
       return new HumanMessage(String(m?.content ?? ''));
     });
 
-    const result: any = await agent.invoke({ messages: langchainMessages });
+    const result = await agent.invoke({ messages: langchainMessages }) as { messages?: Array<{ content?: unknown }> };
 
     const outMessages = Array.isArray(result?.messages) ? result.messages : [];
     const last = outMessages[outMessages.length - 1];
@@ -80,9 +85,10 @@ router.post('/', async (req: Request, res: ExpressResponse) => {
 
     res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
     res.end();
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Server Error';
     console.error('Chat API Error:', error);
-    res.write(`data: ${JSON.stringify({ type: 'error', error: error.message || 'Server Error' })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
     res.end();
   }
 });

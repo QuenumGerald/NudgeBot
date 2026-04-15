@@ -15,8 +15,9 @@ export default function Login() {
       setError('');
       const res = await api.post('/auth/login', { password });
       localStorage.setItem('user', JSON.stringify(res.user));
+      localStorage.setItem('auth_token', res.token);
       navigate('/');
-    } catch (err: any) {
+    } catch {
       setError('Invalid password or server error.');
     }
   };

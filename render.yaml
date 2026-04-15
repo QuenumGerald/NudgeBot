@@ -11,10 +11,16 @@ services:
         value: 3000
       - key: DATABASE_URL
         value: /data/nudgebot.sqlite
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
       - key: OPENROUTER_API_KEY
-        value: placeholder_key
+        sync: false
       - key: DEEPSEEK_API_KEY
-        value: placeholder_key
+        sync: false
     disk:
       name: nudgebot-data
       mountPath: /data

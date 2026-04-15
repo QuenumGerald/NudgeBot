@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getDb } from '../lib/db';
+import { createAuthToken } from '../middleware/auth';
 
 const router = Router();
 
@@ -17,7 +17,10 @@ router.post('/login', (req, res) => {
     return;
   }
 
-  res.json({ message: 'Login successful', user: { id: 1, email: 'admin' } });
+  const user = { id: 1, email: 'admin' };
+  const token = createAuthToken(user);
+
+  res.json({ message: 'Login successful', user, token });
 });
 
 router.post('/logout', (req, res) => {
