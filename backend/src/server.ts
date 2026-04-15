@@ -2,23 +2,46 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { getDb } from './lib/db';
+import { requireAuth } from './middleware/auth';
 
 dotenv.config();
 
 import authRouter from './routes/auth';
 import chatRouter from './routes/chat';
+import settingsRouter from './routes/settings';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+const allowedOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: allowedOrigins.length > 0 ? allowedOrigins : false,
+  })
+);
+app.use(helmet());
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: Number(process.env.RATE_LIMIT_MAX || 300),
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
 app.use(express.json());
 
 getDb().catch(console.error);
 
 app.use('/api/auth', authRouter);
-app.use('/api/chat', chatRouter);
+app.use('/api/chat', requireAuth, chatRouter);
+app.use('/api/settings', requireAuth, settingsRouter);
 
 const frontendDistPath = path.join(__dirname, '../../frontend/dist');
 app.use(express.static(frontendDistPath));

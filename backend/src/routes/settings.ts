@@ -1,10 +1,16 @@
 import { Router } from 'express';
 import { getDb } from '../lib/db';
+import { AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
 
-router.get('/:userId', async (req, res) => {
+router.get('/:userId', async (req: AuthenticatedRequest, res) => {
   const { userId } = req.params;
+  if (req.user?.id !== Number(userId)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
   try {
     const db = await getDb();
     const settings = await db.get('SELECT * FROM settings WHERE user_id = ?', userId);
@@ -20,9 +26,13 @@ router.get('/:userId', async (req, res) => {
   }
 });
 
-router.post('/:userId', async (req, res) => {
+router.post('/:userId', async (req: AuthenticatedRequest, res) => {
   const { userId } = req.params;
   const { llm_provider, llm_model, llm_api_key } = req.body;
+  if (req.user?.id !== Number(userId)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   try {
     const db = await getDb();

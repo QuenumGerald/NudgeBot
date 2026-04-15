@@ -6,11 +6,12 @@ import { Brain, LogOut, Settings as SettingsIcon, Send, Moon, Sun, Wrench } from
 import { useTheme } from '@/components/ThemeProvider';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { api } from '@/lib/api';
 
 type ToolCall = {
   name: string;
-  input?: any;
-  result?: any;
+  input?: unknown;
+  result?: unknown;
 };
 
 type Message = {
@@ -18,6 +19,14 @@ type Message = {
   content: string;
   tools?: ToolCall[];
 };
+
+type StreamEvent =
+  | { type: 'thinking' }
+  | { type: 'delta'; content: string }
+  | { type: 'tool_start'; tool_name: string; input: unknown }
+  | { type: 'tool_result'; tool_name: string; result: unknown }
+  | { type: 'error'; error: string }
+  | { type: 'done' };
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -45,6 +54,7 @@ export default function Home() {
 
   const handleLogout = () => {
     localStorage.removeItem('user');
+    localStorage.removeItem('auth_token');
     navigate('/login');
   };
 
@@ -57,13 +67,9 @@ export default function Home() {
     setIsThinking(true);
 
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const response = await api.postStream('/chat', {
           user_id: user.id,
           messages: newMessages.map(m => ({ role: m.role, content: m.content }))
-        })
       });
 
       if (!response.ok) {
@@ -75,8 +81,8 @@ export default function Home() {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let assistantMessage: Message = { role: 'assistant', content: '', tools: [] };
-      let updatedMessages = [...newMessages, assistantMessage];
+      const assistantMessage: Message = { role: 'assistant', content: '', tools: [] };
+      const updatedMessages = [...newMessages, assistantMessage];
       setMessages(updatedMessages);
 
       let buffer = '';
@@ -96,7 +102,7 @@ export default function Home() {
             const dataStr = chunk.replace('data: ', '').trim();
             if (dataStr) {
               try {
-                const data = JSON.parse(dataStr);
+                const data = JSON.parse(dataStr) as StreamEvent;
 
                 if (data.type === 'thinking') {
                   setIsThinking(false);
@@ -196,7 +202,7 @@ export default function Home() {
                         <div className="font-mono text-xs opacity-80">
                           Input: {JSON.stringify(tool.input)}
                         </div>
-                        {tool.result && (
+                        {tool.result != null && (
                           <div className="font-mono text-xs mt-2 border-t border-border/50 pt-2 opacity-80">
                             Result: {JSON.stringify(tool.result).slice(0, 100)}{JSON.stringify(tool.result).length > 100 ? '...' : ''}
                           </div>
