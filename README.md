@@ -52,11 +52,20 @@ npm install
 # Configure (see Variables section below)
 cp backend/.env.example backend/.env
 
+# Generate a secure JWT secret
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+
+# Add the generated secret to backend/.env:
+# JWT_SECRET=<generated-secret>
+# JWT_EXPIRES_IN=12h
+
 # Run
 npm run dev
 ```
 
 App available at `http://localhost:3000`.
+
+**Login**: Use `POST /api/auth/login` with your `ADMIN_PASSWORD` to get a JWT token, then include it in requests with `Authorization: Bearer <token>`.
 
 **Requirements:** Node.js 20+ · npm 10+
 
