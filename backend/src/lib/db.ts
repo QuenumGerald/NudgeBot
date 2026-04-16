@@ -10,6 +10,12 @@ export async function getDb(): Promise<Database> {
 
   const dbPath = process.env.DATABASE_URL || path.join(__dirname, '../../../nudgebot.sqlite');
 
+  // Ensure parent directory exists (e.g. /data on Render)
+  const dir = path.dirname(path.resolve(dbPath));
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
   dbInstance = await open({
     filename: dbPath,
     driver: sqlite3.Database,
