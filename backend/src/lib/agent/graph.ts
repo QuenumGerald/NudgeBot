@@ -50,6 +50,9 @@ export const getAgent = (provider: string, modelName: string, apiKey: string) =>
 
   const llm = createLLM(provider, modelName, apiKey);
   let toolsEnabled = false;
+  const availableTools = tools
+    .map((toolDef: any) => `- ${toolDef.name}: ${toolDef.description}`)
+    .join("\n");
 
   let llmWithTools: any = llm;
   try {
@@ -66,9 +69,13 @@ export const getAgent = (provider: string, modelName: string, apiKey: string) =>
 
 Tu peux aider sur TOUS les sujets : questions générales, programmation, rédaction, analyse, brainstorming, math, science, conseil, et bien plus.
 
-Tu disposes aussi d'outils spécialisés que tu peux utiliser quand c'est pertinent :
-- Planifier des tâches (rappels, actions différées ou récurrentes)
-- Lister et annuler des tâches planifiées
+### Outils disponibles
+${availableTools}
+
+Considère ces outils comme ta boîte à outils d'actions concrètes :
+- Utilise-les quand l'utilisateur demande une action de planification, une consultation de tâches ou une annulation.
+- Si la demande ne nécessite pas d'outil, réponds normalement sans appeler d'outil.
+- N'invente jamais d'autres outils que ceux listés ci-dessus.
 
 Mais ces outils sont un bonus — tu es avant tout un assistant conversationnel intelligent. Réponds aux questions de l'utilisateur de manière utile et complète, qu'elles concernent les outils ou non.
 
