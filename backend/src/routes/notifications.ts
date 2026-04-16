@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { getDb } from '../lib/db';
-import { scheduleNotificationJob } from '../lib/notifications';
-import { AuthenticatedRequest } from '../middleware/auth';
+import { getStore } from '../lib/githubStore.js';
+import { scheduleNotificationJob } from '../lib/notifications.js';
+import { AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -45,37 +45,17 @@ router.post('/:userId', async (req: AuthenticatedRequest, res) => {
   }
 
   try {
-    const db = await getDb();
-    const result = await db.run(
-      `INSERT INTO scheduled_notifications (
-        user_id,
-        recipient_email,
-        subject,
-        body,
-        send_at,
-        status,
-        recurrence_interval_minutes,
-        max_runs
-      ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
-      userId,
-      parsedBody.data.recipient_email,
-      parsedBody.data.subject,
-      parsedBody.data.body,
-      sendAt.toISOString(),
-      parsedBody.data.recurrence_interval_minutes ?? null,
-      parsedBody.data.max_runs ?? null
-    );
+    const store = await getStore();
+    const created = await store.createNotification(Number(userId), {
+      recipient_email: parsedBody.data.recipient_email,
+      subject: parsedBody.data.subject,
+      body: parsedBody.data.body,
+      send_at: sendAt.toISOString(),
+      recurrence_interval_minutes: parsedBody.data.recurrence_interval_minutes,
+      max_runs: parsedBody.data.max_runs,
+    });
 
-    await scheduleNotificationJob(result.lastID as number, sendAt);
-
-    const created = await db.get(
-      `SELECT id, user_id, recipient_email, subject, body, send_at, sent_at, status, last_error,
-              recurrence_interval_minutes, max_runs, run_count, last_sent_at, created_at
-       FROM scheduled_notifications
-       WHERE id = ?`,
-      result.lastID
-    );
-
+    await scheduleNotificationJob(created.id, sendAt);
     res.status(201).json(created);
   } catch (error) {
     console.error('Create notification error:', error);
@@ -91,15 +71,8 @@ router.get('/:userId', async (req: AuthenticatedRequest, res) => {
   }
 
   try {
-    const db = await getDb();
-    const notifications = await db.all(
-      `SELECT id, user_id, recipient_email, subject, body, send_at, sent_at, status, last_error,
-              recurrence_interval_minutes, max_runs, run_count, last_sent_at, created_at
-       FROM scheduled_notifications
-       WHERE user_id = ?
-       ORDER BY datetime(send_at) DESC`,
-      userId
-    );
+    const store = await getStore();
+    const notifications = store.getNotificationsByUser(Number(userId));
     res.json(notifications);
   } catch (error) {
     console.error('List notifications error:', error);

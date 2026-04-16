@@ -4,16 +4,16 @@ import dotenv from 'dotenv';
 import path from 'path';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { getDb } from './lib/db';
-import { requireAuth } from './middleware/auth';
+import { getStore } from './lib/githubStore.js';
+import { requireAuth } from './middleware/auth.js';
 
 dotenv.config();
 
-import authRouter from './routes/auth';
-import chatRouter from './routes/chat';
-import settingsRouter from './routes/settings';
-import notificationsRouter from './routes/notifications';
-import { startNotificationWorker } from './lib/notifications';
+import authRouter from './routes/auth.js';
+import chatRouter from './routes/chat.js';
+import settingsRouter from './routes/settings.js';
+import notificationsRouter from './routes/notifications.js';
+import { startNotificationWorker } from './lib/notifications.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -39,14 +39,16 @@ app.use(
 );
 app.use(express.json());
 
-getDb().catch(console.error);
+// Initialize store (loads data from GitHub)
+getStore().then(() => {
+  console.log('[store] initialized');
+  startNotificationWorker();
+}).catch(console.error);
 
 app.use('/api/auth', authRouter);
 app.use('/api/chat', requireAuth, chatRouter);
 app.use('/api/settings', requireAuth, settingsRouter);
 app.use('/api/notifications', requireAuth, notificationsRouter);
-
-startNotificationWorker();
 
 const frontendDistPath = path.join(__dirname, '../../frontend/dist');
 app.use(express.static(frontendDistPath));
@@ -67,6 +69,21 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
+
+// Flush store to GitHub on shutdown
+import { getStoreSync } from './lib/githubStore.js';
+
+const shutdown = async () => {
+  const store = getStoreSync();
+  if (store) {
+    console.log('[store] flushing to GitHub before exit...');
+    await store.flush();
+  }
+  process.exit(0);
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

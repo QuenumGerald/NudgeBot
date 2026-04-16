@@ -1,17 +1,5 @@
 import { BlazeJob } from 'blazerjob';
-import { getDb } from './db';
-
-type PendingNotification = {
-  id: number;
-  user_id: number;
-  recipient_email: string;
-  subject: string;
-  body: string;
-  send_at: string;
-  recurrence_interval_minutes: number | null;
-  max_runs: number | null;
-  run_count: number;
-};
+import { getStore, NotificationRecord } from './githubStore.js';
 
 const jobs = new BlazeJob({ concurrency: 16 });
 const scheduledNotificationIds = new Set<number>();
@@ -23,7 +11,7 @@ const getResendConfig = () => {
   return { apiKey, fromEmail };
 };
 
-const sendResendEmail = async (notification: PendingNotification) => {
+const sendResendEmail = async (notification: NotificationRecord) => {
   const { apiKey, fromEmail } = getResendConfig();
 
   if (!apiKey || !fromEmail) {
@@ -73,16 +61,10 @@ const scheduleNotificationExecution = (notificationId: number, sendAt: Date) => 
 };
 
 const processNotificationById = async (notificationId: number) => {
-  const db = await getDb();
-  const notification = await db.get<PendingNotification>(
-    `SELECT id, user_id, recipient_email, subject, body, send_at,
-            recurrence_interval_minutes, max_runs, run_count
-     FROM scheduled_notifications
-     WHERE id = ? AND sent_at IS NULL AND status = 'pending'`,
-    notificationId
-  );
+  const store = await getStore();
+  const notification = store.getNotification(notificationId);
 
-  if (!notification) {
+  if (!notification || notification.sent_at !== null || notification.status !== 'pending') {
     return;
   }
 
@@ -97,60 +79,43 @@ const processNotificationById = async (notificationId: number) => {
       const intervalMs = (notification.recurrence_interval_minutes as number) * 60_000;
       const nextRunAt = new Date(Date.now() + intervalMs);
 
-      await db.run(
-        `UPDATE scheduled_notifications
-         SET run_count = ?,
-             last_sent_at = CURRENT_TIMESTAMP,
-             send_at = ?,
-             status = 'pending',
-             last_error = NULL
-         WHERE id = ?`,
-        nextRunCount,
-        nextRunAt.toISOString(),
-        notification.id
-      );
+      await store.updateNotification(notificationId, {
+        run_count: nextRunCount,
+        last_sent_at: new Date().toISOString(),
+        send_at: nextRunAt.toISOString(),
+        status: 'pending',
+        last_error: null,
+      });
 
-      scheduleNotificationExecution(notification.id, nextRunAt);
+      scheduleNotificationExecution(notificationId, nextRunAt);
       return;
     }
 
-    await db.run(
-      `UPDATE scheduled_notifications
-       SET sent_at = CURRENT_TIMESTAMP,
-           last_sent_at = CURRENT_TIMESTAMP,
-           run_count = ?,
-           status = 'sent',
-           last_error = NULL
-       WHERE id = ?`,
-      nextRunCount,
-      notification.id
-    );
+    await store.updateNotification(notificationId, {
+      sent_at: new Date().toISOString(),
+      last_sent_at: new Date().toISOString(),
+      run_count: nextRunCount,
+      status: 'sent',
+      last_error: null,
+    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown sending error';
-    await db.run(
-      `UPDATE scheduled_notifications
-       SET status = 'failed', last_error = ?
-       WHERE id = ?`,
-      errorMessage,
-      notification.id
-    );
+    await store.updateNotification(notificationId, {
+      status: 'failed',
+      last_error: errorMessage,
+    });
     console.error('[notifications] Failed to send', {
-      notificationId: notification.id,
+      notificationId,
       error: errorMessage,
     });
   }
 };
 
 const reconcilePendingNotifications = async () => {
-  const db = await getDb();
-  const pendingNotifications = await db.all<PendingNotification[]>(
-    `SELECT id, user_id, recipient_email, subject, body, send_at,
-            recurrence_interval_minutes, max_runs, run_count
-     FROM scheduled_notifications
-     WHERE sent_at IS NULL AND status = 'pending'`
-  );
+  const store = await getStore();
+  const pending = store.getPendingNotifications();
 
-  for (const notification of pendingNotifications) {
+  for (const notification of pending) {
     scheduleNotificationExecution(notification.id, new Date(notification.send_at));
   }
 };

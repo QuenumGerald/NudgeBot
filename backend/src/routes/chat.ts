@@ -1,7 +1,7 @@
 import { Router, Request, Response as ExpressResponse } from 'express';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
-import { getAgent } from '../lib/agent/graph';
-import { AuthenticatedRequest } from '../middleware/auth';
+import { getAgent } from '../lib/agent/graph.js';
+import { AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = Router();
 

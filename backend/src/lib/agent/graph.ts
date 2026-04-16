@@ -2,8 +2,7 @@ import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
-import { tools } from "./tools";
-import { setupMCP } from "./mcp";
+import { tools } from "./tools.js";
 
 export const createLLM = (provider: string, modelName: string, apiKey: string) => {
   if (provider === 'openrouter') {
