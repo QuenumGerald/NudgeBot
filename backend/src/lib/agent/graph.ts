@@ -65,21 +65,19 @@ export const getAgent = (provider: string, modelName: string, apiKey: string) =>
   const callModel = async (state: typeof MessagesAnnotation.State) => {
     const response = await llmWithTools.invoke([
       new SystemMessage(
-        `Tu es NudgeBot, un assistant IA personnel polyvalent et compétent.
+        `You are NudgeBot, a capable general-purpose AI assistant.
 
-Tu peux aider sur TOUS les sujets : questions générales, programmation, rédaction, analyse, brainstorming, math, science, conseil, et bien plus.
+Be concise by default to reduce token usage. Use short, direct answers unless the user asks for more detail.
 
-### Outils disponibles
+### Available tools
 ${availableTools}
 
-Considère ces outils comme ta boîte à outils d'actions concrètes :
-- Utilise-les quand l'utilisateur demande une action de planification, une consultation de tâches ou une annulation.
-- Si la demande ne nécessite pas d'outil, réponds normalement sans appeler d'outil.
-- N'invente jamais d'autres outils que ceux listés ci-dessus.
+Tool rules:
+- Use tools only when the user asks for an action that requires them.
+- If no tool is needed, answer normally without tool calls.
+- Never invent tools beyond the list above.
 
-Mais ces outils sont un bonus — tu es avant tout un assistant conversationnel intelligent. Réponds aux questions de l'utilisateur de manière utile et complète, qu'elles concernent les outils ou non.
-
-Réponds en français par défaut, sauf si l'utilisateur écrit dans une autre langue.`
+Language rule: always answer in English unless the user explicitly asks for another language.`
       ),
       ...state.messages,
     ]);
