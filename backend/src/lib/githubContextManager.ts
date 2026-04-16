@@ -341,10 +341,10 @@ const resolveGitHubOwner = async (token: string): Promise<string | null> => {
 };
 
 const initManager = async (): Promise<GitHubContextManager | null> => {
-  const token = process.env.GITHUB_CONTEXT_TOKEN;
+  const token = (process.env.GITHUB_TOKEN || process.env.GITHUB_CONTEXT_TOKEN || process.env.GITHUB_PERSONAL_ACCESS_TOKEN || "").trim();
 
   if (!token) {
-    console.warn("[github-ctx] GITHUB_CONTEXT_TOKEN not set — context persistence disabled");
+    console.warn("[github-ctx] No GitHub token found (checked GITHUB_TOKEN, GITHUB_CONTEXT_TOKEN, GITHUB_PERSONAL_ACCESS_TOKEN). Persistence disabled.");
     return null;
   }
 
@@ -352,7 +352,7 @@ const initManager = async (): Promise<GitHubContextManager | null> => {
   let owner: string;
   let repo: string;
 
-  const repoFull = process.env.GITHUB_CONTEXT_REPO;
+  const repoFull = (process.env.GITHUB_CONTEXT_REPO || process.env.GITHUB_REPO || "").trim();
   if (repoFull) {
     const parts = repoFull.split("/");
     if (parts.length !== 2) {

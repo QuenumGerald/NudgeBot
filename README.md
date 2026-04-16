@@ -225,8 +225,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com
 OPENROUTER_API_KEY=
 OPENAI_API_KEY=
 
-# Database
-DATABASE_URL=/data/nudgebot.sqlite
+# Persistence
+NudgeBot uses a **zero-dependency GitHub-backed store**. No SQLite or PostgreSQL is required. All users, settings, and notifications are synced to a private JSON file in your GitHub account.
 
 # Agent workspace
 NUDGEBOT_WORKDIR=./workspace
@@ -238,11 +238,11 @@ JULES_API_KEY=
 RESEND_API_KEY=
 RESEND_FROM_EMAIL=notifications@your-domain.com
 
-# GitHub memory (cross-session context)
-GITHUB_CONTEXT_TOKEN=          # GitHub PAT with repo scope
-GITHUB_CONTEXT_REPO=           # e.g. mylogin/nudgebot-context (auto-created if blank)
+# GitHub (Master access)
+GITHUB_TOKEN=                   # Master PAT (repo scope) - used for memory, settings, and MCP
+GITHUB_REPO=                    # e.g. mylogin/nudgebot-context (auto-created if blank)
 
-# MCP: GitHub
+# MCP: GitHub (Optional fallback)
 GITHUB_PERSONAL_ACCESS_TOKEN=
 
 # MCP: Jira
@@ -369,18 +369,12 @@ LLM_MODEL=deepseek-chat
 DEEPSEEK_API_KEY=your-deepseek-api-key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 
-# Database (Render provides disk persistence)
-DATABASE_URL=/data/nudgebot.sqlite
+# GitHub (Master access)
+GITHUB_TOKEN=your-github-pat
+GITHUB_REPO=your-username/nudgebot-context
 
-# Agent workspace
-NUDGEBOT_WORKDIR=/data/workspace
-
-# GitHub memory (cross-session context)
-GITHUB_CONTEXT_TOKEN=your-github-pat
-GITHUB_CONTEXT_REPO=your-username/nudgebot-context
-
-# MCP: GitHub
-GITHUB_PERSONAL_ACCESS_TOKEN=your-github-pat
+# MCP: GitHub (Optional fallback)
+GITHUB_PERSONAL_ACCESS_TOKEN=
 
 # MCP integrations (optional)
 JIRA_API_TOKEN=

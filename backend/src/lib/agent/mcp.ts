@@ -48,7 +48,7 @@ const ALL_SERVERS = () => {
       args: ["-y", "@modelcontextprotocol/server-github"],
       env: {
         ...process.env,
-        GITHUB_PERSONAL_ACCESS_TOKEN: toEnv(process.env.GITHUB_PERSONAL_ACCESS_TOKEN),
+        GITHUB_PERSONAL_ACCESS_TOKEN: toEnv(process.env.GITHUB_PERSONAL_ACCESS_TOKEN || process.env.GITHUB_TOKEN || process.env.GITHUB_CONTEXT_TOKEN),
       },
     },
     google_calendar: {
