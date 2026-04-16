@@ -103,7 +103,7 @@ export default function Settings() {
           <div className="space-y-3 pt-4 border-t border-border">
             <label className="text-sm font-medium text-foreground">Integrations (MCP)</label>
             <div className="space-y-2">
-              {['fetch', 'github', 'google_calendar', 'jira', 'confluence', 'render', 'netlify'].map((integration) => (
+              {['github', 'google_calendar', 'jira', 'confluence', 'render', 'netlify'].map((integration) => (
                 <label key={integration} className="flex items-center space-x-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -127,6 +127,9 @@ export default function Settings() {
                 </label>
               ))}
             </div>
+            <p className="text-xs text-muted-foreground">
+              Configure API keys in environment variables or .env file
+            </p>
           </div>
 
           <Button onClick={saveSettings} disabled={isSaving}>
