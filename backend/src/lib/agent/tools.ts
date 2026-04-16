@@ -306,15 +306,226 @@ export const julesSessionTool = tool(
   }
 );
 
+// ── Web / Utility tools ───────────────────────────────────────────────────────
+
+export const webFetchTool = tool(
+  async ({ url }: { url: string }) => {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: { "User-Agent": "NudgeBot/1.0" },
+      });
+      clearTimeout(timeout);
+
+      if (!res.ok) return `HTTP ${res.status}: ${res.statusText}`;
+
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const json = await res.json();
+        return JSON.stringify(json, null, 2).slice(0, 8000);
+      }
+
+      const text = await res.text();
+      // Strip HTML tags for readability
+      const cleaned = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      return cleaned.slice(0, 8000);
+    } catch (e: any) {
+      return `Failed to fetch URL: ${e.message}`;
+    }
+  },
+  {
+    name: "web_fetch",
+    description: "Fetches the content of a URL and returns the text (HTML tags stripped). Useful for reading web pages, APIs, documentation.",
+    schema: z.object({
+      url: z.string().describe("The URL to fetch."),
+    }),
+  }
+);
+
+export const sendEmailTool = tool(
+  async ({ to, subject, body }: { to: string; subject: string; body: string }) => {
+    const apiKey = (process.env.RESEND_API_KEY || "").trim();
+    const fromEmail = (process.env.RESEND_FROM_EMAIL || "").trim();
+
+    if (!apiKey || !fromEmail) {
+      return "Email not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.";
+    }
+
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: [to],
+          subject,
+          html: `<div>${body.replace(/\n/g, "<br />")}</div>`,
+          text: body,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        return `Failed to send email: ${res.status} ${err}`;
+      }
+
+      return `Email sent to ${to} with subject "${subject}".`;
+    } catch (e: any) {
+      return `Failed to send email: ${e.message}`;
+    }
+  },
+  {
+    name: "send_email",
+    description: "Sends an email immediately via Resend. Use for quick notifications, summaries, or reports.",
+    schema: z.object({
+      to: z.string().describe("Recipient email address."),
+      subject: z.string().describe("Email subject line."),
+      body: z.string().describe("Email body (plain text, newlines supported)."),
+    }),
+  }
+);
+
+export const getDateTimeTool = tool(
+  async ({ timezone }: { timezone?: string }) => {
+    try {
+      const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const now = new Date();
+      const formatted = now.toLocaleString("fr-FR", { timeZone: tz, dateStyle: "full", timeStyle: "long" });
+      return `${formatted} (${tz})\nISO: ${now.toISOString()}\nTimestamp: ${now.getTime()}`;
+    } catch (e: any) {
+      return `Failed to get date/time: ${e.message}`;
+    }
+  },
+  {
+    name: "get_date_time",
+    description: "Returns the current date and time, optionally in a specific timezone.",
+    schema: z.object({
+      timezone: z.string().optional().describe("IANA timezone (e.g. 'Europe/Paris', 'America/New_York'). Defaults to server timezone."),
+    }),
+  }
+);
+
+export const saveNoteTool = tool(
+  async ({ title, content }: { title: string; content: string }) => {
+    try {
+      const { getGitHubContextManager } = await import("../githubContextManager.js");
+      const mgr = getGitHubContextManager();
+      if (!mgr) return "GitHub context not configured. Note saved locally only.";
+
+      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const filePath = `notes/${slug}.md`;
+      const markdown = `# ${title}\n\n_Saved: ${new Date().toISOString()}_\n\n${content}`;
+
+      const ok = await (mgr as any).putFile(filePath, markdown, `Save note: ${title}`);
+      return ok ? `Note "${title}" saved to GitHub (${filePath}).` : `Failed to save note to GitHub.`;
+    } catch (e: any) {
+      return `Failed to save note: ${e.message}`;
+    }
+  },
+  {
+    name: "save_note",
+    description: "Saves a note to the GitHub context repo. Useful for remembering things across sessions.",
+    schema: z.object({
+      title: z.string().describe("Note title (used as filename)."),
+      content: z.string().describe("Note content in markdown."),
+    }),
+  }
+);
+
+export const listNotesTool = tool(
+  async () => {
+    try {
+      const { getGitHubContextManager } = await import("../githubContextManager.js");
+      const mgr = getGitHubContextManager();
+      if (!mgr) return "GitHub context not configured.";
+
+      const baseUrl = (mgr as any).baseUrl as string;
+      const headers = (mgr as any).headers as Record<string, string>;
+
+      const res = await fetch(`${baseUrl}/contents/notes`, { headers });
+      if (res.status === 404) return "No notes saved yet.";
+      if (!res.ok) return `Failed to list notes: ${res.status}`;
+
+      const files = (await res.json()) as Array<{ name: string; size: number }>;
+      if (files.length === 0) return "No notes saved yet.";
+
+      return files.map((f) => `- ${f.name} (${f.size} bytes)`).join("\n");
+    } catch (e: any) {
+      return `Failed to list notes: ${e.message}`;
+    }
+  },
+  {
+    name: "list_notes",
+    description: "Lists all notes saved in the GitHub context repo.",
+    schema: z.object({}),
+  }
+);
+
+export const readNoteTool = tool(
+  async ({ title }: { title: string }) => {
+    try {
+      const { getGitHubContextManager } = await import("../githubContextManager.js");
+      const mgr = getGitHubContextManager();
+      if (!mgr) return "GitHub context not configured.";
+
+      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const baseUrl = (mgr as any).baseUrl as string;
+      const headers = (mgr as any).headers as Record<string, string>;
+
+      const res = await fetch(`${baseUrl}/contents/notes/${slug}.md`, { headers });
+      if (res.status === 404) return `Note "${title}" not found.`;
+      if (!res.ok) return `Failed to read note: ${res.status}`;
+
+      const data = (await res.json()) as { content: string };
+      return Buffer.from(data.content, "base64").toString("utf-8");
+    } catch (e: any) {
+      return `Failed to read note: ${e.message}`;
+    }
+  },
+  {
+    name: "read_note",
+    description: "Reads a note from the GitHub context repo by title.",
+    schema: z.object({
+      title: z.string().describe("Note title to read."),
+    }),
+  }
+);
+
+// ── Export all tools ──────────────────────────────────────────────────────────
+
 export const tools = [
+  // Workspace
   createProjectWorkspaceTool,
-  scheduleTaskTool,
-  listTasksTool,
-  cancelTaskTool,
+  // File ops
   createFileTool,
   readFileTool,
   listDirectoryTool,
   deleteFileTool,
+  // Shell
   executeCommandTool,
+  // Scheduling
+  scheduleTaskTool,
+  listTasksTool,
+  cancelTaskTool,
+  // Web
+  webFetchTool,
+  // Email
+  sendEmailTool,
+  // Date/Time
+  getDateTimeTool,
+  // Notes (GitHub-backed)
+  saveNoteTool,
+  listNotesTool,
+  readNoteTool,
+  // Google Jules
   julesSessionTool,
 ];

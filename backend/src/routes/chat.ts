@@ -1,6 +1,7 @@
 import { Router, Request, Response as ExpressResponse } from 'express';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import { getAgent } from '../lib/agent/graph.js';
+import { getStore } from '../lib/githubStore.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = Router();
@@ -49,22 +50,60 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
   (res as any).flushHeaders?.();
 
   try {
-    // Let the client know the stream is alive as early as possible
     res.write(`data: ${JSON.stringify({ type: 'thinking' })}\n\n`);
 
-    const { provider, model, apiKey } = getLLMConfigFromEnv();
+    // Load user settings from store
+    const store = await getStore();
+    const userSettings = userId ? store.getSettings(userId) : undefined;
+
+    const envConfig = getLLMConfigFromEnv();
+    const provider = userSettings?.llm_provider || envConfig.provider;
+    const model = userSettings?.llm_model || envConfig.model;
+    const apiKey = userSettings?.llm_api_key || envConfig.apiKey;
+
+    const enabledIntegrations: string[] = userSettings?.enabled_integrations
+      ? JSON.parse(userSettings.enabled_integrations)
+      : [];
 
     console.log('[chat] llm config', {
       provider,
       model,
       hasApiKey: Boolean(apiKey),
+      integrations: enabledIntegrations,
     });
 
     if (!apiKey) {
       throw new Error('LLM API key not configured');
     }
 
-    const agent = getAgent(provider, model, apiKey);
+    // Load previous context from GitHub if available
+    let previousContext: string | null = null;
+    try {
+      const { getGitHubContextManager } = await import('../lib/githubContextManager.js');
+      const mgr = getGitHubContextManager();
+      if (mgr) {
+        const ctx = await mgr.loadUserContext(String(userId ?? ''));
+        if (ctx) {
+          const parts: string[] = [];
+          if (ctx.summary) parts.push(`Résumé: ${ctx.summary}`);
+          if (ctx.key_decisions?.length) parts.push(`Décisions: ${ctx.key_decisions.map(d => d.text).join("; ")}`);
+          if (ctx.active_topics?.length) parts.push(`Sujets actifs: ${ctx.active_topics.join(", ")}`);
+          if (ctx.next_actions?.length) parts.push(`Actions: ${ctx.next_actions.map(a => a.description).join("; ")}`);
+          if (parts.length) previousContext = parts.join("\n");
+        }
+      }
+    } catch {
+      // GitHub context not configured — continue without
+    }
+
+    const agent = await getAgent(
+      provider,
+      model,
+      apiKey,
+      enabledIntegrations,
+      String(userId ?? ''),
+      previousContext
+    );
 
     console.log('[chat] streaming start');
 

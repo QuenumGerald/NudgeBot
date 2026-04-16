@@ -91,20 +91,26 @@ No third-party memory service. No vector DB. Just a GitHub repo you already have
 
 The agent is a [LangGraph](https://langchain-ai.github.io/langgraphjs/) `StateGraph` that loops `LLM → tools → LLM` until no more tool calls are needed. Supported providers: **DeepSeek**, **OpenRouter**, **OpenAI** (configurable per user in Settings).
 
-#### Built-in tools
+#### Built-in tools (16)
 
-| Tool | What it does |
-|---|---|
-| `create_project_workspace` | Creates a sandboxed subfolder per project under `NUDGEBOT_WORKDIR` |
-| `read_file` | Reads a file (workspace-restricted) |
-| `write_file` | Writes or overwrites a file |
-| `list_directory` | Lists a directory |
-| `delete_file` | Deletes a file or folder |
-| `execute_command` | Runs a shell command in the workspace |
-| `schedule_task` | Schedules a one-off or recurring task via node-cron |
-| `list_tasks` | Lists active scheduled tasks |
-| `cancel_task` | Cancels a task by ID |
-| `run_jules_session` | Launches a Google Jules AI coding session |
+| Category | Tool | What it does |
+|---|---|---|
+| **Workspace** | `create_project_workspace` | Creates a sandboxed subfolder per project under `NUDGEBOT_WORKDIR` |
+| **Files** | `create_file` | Creates or appends to a file (workspace-restricted) |
+| | `read_file` | Reads a file |
+| | `list_directory` | Lists a directory |
+| | `delete_file` | Deletes a file |
+| **Shell** | `execute_command` | Runs a shell command in the workspace (15s timeout) |
+| **Scheduling** | `schedule_task` | Schedules a one-off or recurring task via BlazerJob |
+| | `list_tasks` | Lists active scheduled tasks |
+| | `cancel_task` | Cancels a task by ID |
+| **Web** | `web_fetch` | Fetches the content of a URL (HTML stripped, JSON pretty-printed) |
+| **Email** | `send_email` | Sends an email immediately via Resend |
+| **Date/Time** | `get_date_time` | Returns current date/time with timezone support |
+| **Notes** | `save_note` | Saves a persistent note to the GitHub context repo |
+| | `list_notes` | Lists all saved notes |
+| | `read_note` | Reads a note by title |
+| **AI Coding** | `run_jules_session` | Launches a Google Jules session → returns PR URL |
 
 ---
 
@@ -139,7 +145,9 @@ MCP servers start **only when a user enables them** in Settings. No global start
 | **Render** | Deployments, services, logs | `RENDER_API_KEY` |
 | **Netlify** | Sites, deploys, DNS | `NETLIFY_AUTH_TOKEN` |
 
-Each user's enabled integrations are stored in SQLite. The MCP client is cached per `userId:integrations` key and invalidated on Settings change.
+Each user's enabled integrations are stored in the GitHub-backed store. The MCP client is cached per `userId:integrations` key and invalidated on Settings change.
+
+Each MCP server exposes dozens of tools automatically to the LLM — for example, enabling GitHub gives the agent `create_issue`, `search_repos`, `create_pull_request`, etc. without writing any code.
 
 ---
 
@@ -273,12 +281,13 @@ NudgeBot/
         ├── lib/
         │   ├── agent/
         │   │   ├── graph.ts              # LangGraph StateGraph
-        │   │   ├── tools.ts              # File, shell, Jules, scheduling tools
+        │   │   ├── tools.ts              # 16 built-in tools (files, shell, web, email, notes, Jules…)
         │   │   └── mcp.ts                # On-demand MCP, per-user cache
         │   ├── githubContextManager.ts   # GitHub persistence (read/write/auto-create)
         │   ├── renderSessionManager.ts   # In-memory sessions + hourly auto-save
         │   ├── notifications.ts          # Resend worker + recurrence logic
-        │   └── db.ts                     # SQLite schema + migrations
+        │   ├── githubStore.ts            # In-memory store synced to GitHub (replaces SQLite)
+        │   └── db.ts                     # Re-export from githubStore
         ├── routes/
         │   ├── auth.ts          # POST /api/auth/login|register
         │   ├── chat.ts          # POST /api/chat  (SSE stream)
@@ -294,14 +303,13 @@ NudgeBot/
 
 ```
 Browser → POST /api/chat  (JWT required)
-  → Load user settings from SQLite (LLM config + enabled integrations)
+  → Load user settings from GitHubStore (LLM config + enabled integrations)
   → Load compressed context from GitHub (previous sessions)
   → getAgent(provider, model, apiKey, integrations, userId, previousContext)
       → setupMCP(integrations, userId)   ← lazy, per-user, cached
+      → Merge 16 built-in tools + MCP tools
       → LangGraph: LLM → tools → LLM → … → final answer
   → SSE: { type: "thinking" } → { type: "delta", content } → { type: "done" }
-  → renderSessionManager.addMessage()
-  → Auto-save to GitHub every hour (node-cron)
 ```
 
 ---

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getStore } from '../lib/githubStore.js';
+import { invalidateMCPCache } from '../lib/agent/mcp.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = Router();
@@ -50,6 +51,12 @@ router.post('/:userId', async (req: AuthenticatedRequest, res) => {
         ? JSON.stringify(enabled_integrations)
         : undefined,
     });
+
+    // Invalidate MCP cache when integrations change
+    if (enabled_integrations != null) {
+      invalidateMCPCache(String(userId));
+    }
+
     res.json(updated);
   } catch (error) {
     console.error('Update settings error:', error);
