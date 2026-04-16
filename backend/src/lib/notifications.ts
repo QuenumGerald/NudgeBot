@@ -125,10 +125,7 @@ export const scheduleNotificationJob = async (notificationId: number, sendAt: Da
 };
 
 export const startNotificationWorker = () => {
-  if (workerStarted) {
-    return;
-  }
-
+  if (workerStarted) return;
   workerStarted = true;
 
   jobs.schedule(

@@ -1,20 +1,15 @@
-declare module 'blazerjob' {
-  export type JobStats = {
-    runs: number;
-    successes: number;
-    failures: number;
-    lastError?: string;
-  };
-
-  export type ScheduleOptions = {
-    runAt: Date;
-    interval?: number;
+declare module "blazerjob" {
+  interface ScheduleOptions {
+    runAt?: Date;
     maxRuns?: number;
-    onEnd?: (stats: JobStats) => void;
-  };
+    interval?: number;
+    onEnd?: () => void;
+  }
 
   export class BlazeJob {
-    constructor(config?: { concurrency?: number });
-    schedule(task: () => Promise<void> | void, options: ScheduleOptions): void;
+    constructor(options?: { concurrency?: number });
+    schedule(fn: () => Promise<void>, options: ScheduleOptions): void;
+    start(): void;
+    stop(): void;
   }
 }
