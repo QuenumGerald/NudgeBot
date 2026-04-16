@@ -314,3 +314,79 @@ npm start
 ```
 
 Serves frontend static assets + API from a single Express process on `PORT`.
+
+---
+
+## Deploy on Render
+
+### Prerequisites
+
+- A Render account (free tier available)
+- GitHub repository connected to Render
+
+### Environment Variables
+
+Set these in your Render dashboard:
+
+```env
+# Server
+PORT=3000
+CORS_ORIGIN=https://your-app.onrender.com
+RATE_LIMIT_MAX=300
+
+# Auth
+ADMIN_PASSWORD=your-admin-password
+JWT_SECRET=your-long-random-secret
+JWT_EXPIRES_IN=12h
+
+# LLM
+LLM_PROVIDER=deepseek
+LLM_MODEL=deepseek-chat
+DEEPSEEK_API_KEY=your-deepseek-api-key
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+
+# Database (Render provides disk persistence)
+DATABASE_URL=/data/nudgebot.sqlite
+
+# Agent workspace
+NUDGEBOT_WORKDIR=/data/workspace
+
+# GitHub memory (cross-session context)
+GITHUB_CONTEXT_TOKEN=your-github-pat
+GITHUB_CONTEXT_REPO=your-username/nudgebot-context
+
+# MCP: GitHub
+GITHUB_PERSONAL_ACCESS_TOKEN=your-github-pat
+
+# MCP integrations (optional)
+JIRA_API_TOKEN=
+JIRA_EMAIL=
+JIRA_URL=
+CONFLUENCE_API_TOKEN=
+CONFLUENCE_EMAIL=
+CONFLUENCE_URL=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REFRESH_TOKEN=
+RENDER_API_KEY=
+NETLIFY_AUTH_TOKEN=
+```
+
+### Build Command
+
+```bash
+cd frontend && npm install && npm run build && cd ../backend && npm install && npm run build
+```
+
+### Start Command
+
+```bash
+cd backend && npm start
+```
+
+### Notes
+
+- Render uses ephemeral file systems — use `/data` for persistent storage
+- GitHub context persistence is recommended for cross-session memory
+- Set `GITHUB_CONTEXT_REPO` to avoid auto-creation on every deploy
+- Free tier has spin-down after 15min inactivity — first request may be slow
