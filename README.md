@@ -391,7 +391,7 @@ NETLIFY_AUTH_TOKEN=
 ### Build Command
 
 ```bash
-cd frontend && npm install && npm run build && cd ../backend && npm install && npm run build
+cd frontend && npm install && npx tsc --ignoreDeprecations 6.0 && npx vite build && cd ../backend && npm install && npm run build
 ```
 
 ### Start Command
