@@ -159,6 +159,10 @@ Schedule email notifications via `POST /api/notifications/:userId`:
 ### 🔒 Security
 
 - **JWT** authentication on all `/api` routes (configurable expiry via `JWT_EXPIRES_IN`)
+  - Login: `POST /api/auth/login` with `{ "password": "ADMIN_PASSWORD" }`
+  - Returns: `{ "message": "Login successful", "user": { "id": 1, "email": "admin" }, "token": "jwt_token_here" }`
+  - Use token in header: `Authorization: Bearer <token>`
+  - Protected routes: `/api/chat`, `/api/settings`, `/api/notifications`
 - **Helmet** — secure HTTP headers out of the box
 - **Rate limiting** — 300 req/15min per IP by default (`RATE_LIMIT_MAX`)
 - **Strict CORS** — only origins listed in `CORS_ORIGIN` are allowed
@@ -191,6 +195,10 @@ RATE_LIMIT_MAX=300
 ADMIN_PASSWORD=your-admin-password
 JWT_SECRET=your-long-random-secret
 JWT_EXPIRES_IN=12h
+
+# To generate a secure JWT_SECRET, run:
+# node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+# This creates a 128-character hex string suitable for production use
 
 # LLM (user can override in Settings)
 LLM_PROVIDER=deepseek
