@@ -186,6 +186,26 @@ export default function Home() {
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground space-y-4">
               <Brain className="w-16 h-16 opacity-20" />
               <p className="text-lg">How can I help you today?</p>
+              <div className="w-full max-w-2xl bg-card border border-border rounded-xl p-4 text-left">
+                <div className="flex items-center gap-2 text-foreground font-medium mb-3">
+                  <Wrench className="w-4 h-4 text-primary" />
+                  <span>Tools</span>
+                </div>
+                <ul className="space-y-2 text-sm">
+                  <li>
+                    <span className="font-mono text-primary">schedule_task</span>
+                    <span className="ml-2">Plan a one-off or recurring task/reminder.</span>
+                  </li>
+                  <li>
+                    <span className="font-mono text-primary">list_tasks</span>
+                    <span className="ml-2">Show all active scheduled tasks.</span>
+                  </li>
+                  <li>
+                    <span className="font-mono text-primary">cancel_task</span>
+                    <span className="ml-2">Cancel a task by its ID.</span>
+                  </li>
+                </ul>
+              </div>
             </div>
           ) : (
             messages.map((msg, i) => (
