@@ -10,9 +10,9 @@ services:
       - key: PORT
         value: 3000
       - key: DATABASE_URL
-        value: /data/nudgebot.sqlite
+        value: /opt/render/project/src/backend/nudgebot.sqlite
       - key: NUDGEBOT_WORKDIR
-        value: /data/workspace
+        value: /opt/render/project/src/backend/workspace
       - key: ADMIN_PASSWORD
         sync: false
       - key: JWT_SECRET
