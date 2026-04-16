@@ -9,6 +9,7 @@ type SettingsState = {
   llm_provider: string;
   llm_model: string;
   llm_api_key: string;
+  enabled_integrations: string[];
 };
 
 export default function Settings() {
@@ -18,6 +19,7 @@ export default function Settings() {
     llm_provider: '',
     llm_model: '',
     llm_api_key: '',
+    enabled_integrations: [],
   });
   const [isSaving, setIsSaving] = useState(false);
   const [status, setStatus] = useState('');
@@ -35,6 +37,7 @@ export default function Settings() {
           llm_provider: data.llm_provider || '',
           llm_model: data.llm_model || '',
           llm_api_key: data.llm_api_key || '',
+          enabled_integrations: data.enabled_integrations || [],
         });
       } catch {
         setStatus('No settings found yet. Save to create them.');
@@ -96,6 +99,36 @@ export default function Settings() {
               placeholder="Optional per-user key"
             />
           </div>
+
+          <div className="space-y-3 pt-4 border-t border-border">
+            <label className="text-sm font-medium text-foreground">Integrations (MCP)</label>
+            <div className="space-y-2">
+              {['fetch', 'github', 'google_calendar', 'jira', 'confluence', 'render', 'netlify'].map((integration) => (
+                <label key={integration} className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.enabled_integrations.includes(integration)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSettings((prev) => ({
+                          ...prev,
+                          enabled_integrations: [...prev.enabled_integrations, integration],
+                        }));
+                      } else {
+                        setSettings((prev) => ({
+                          ...prev,
+                          enabled_integrations: prev.enabled_integrations.filter((i) => i !== integration),
+                        }));
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-border"
+                  />
+                  <span className="text-sm text-foreground capitalize">{integration.replace('_', ' ')}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <Button onClick={saveSettings} disabled={isSaving}>
             {isSaving ? 'Saving...' : 'Save settings'}
           </Button>
