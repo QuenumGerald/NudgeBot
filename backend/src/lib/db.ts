@@ -1,14 +1,23 @@
 import sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
 import path from 'path';
+import fs from 'fs';
 
 let dbInstance: Database | null = null;
 
 export async function getDb(): Promise<Database> {
   if (dbInstance) return dbInstance;
 
+  const dbPath = process.env.DATABASE_URL || path.join(__dirname, '../../../nudgebot.sqlite');
+  const dbDir = path.dirname(dbPath);
+
+  // Ensure directory exists
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+
   dbInstance = await open({
-    filename: process.env.DATABASE_URL || path.join(__dirname, '../../../nudgebot.sqlite'),
+    filename: dbPath,
     driver: sqlite3.Database,
   });
 
