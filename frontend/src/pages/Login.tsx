@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Brain } from 'lucide-react';
 
 export default function Login() {
   const [password, setPassword] = useState('');
@@ -32,7 +31,7 @@ export default function Login() {
     <div className="flex items-center justify-center min-h-screen bg-background">
       <div className="w-full max-w-md p-8 space-y-6 bg-card rounded-xl shadow-lg border border-border">
         <div className="flex flex-col items-center">
-          <Brain className="w-12 h-12 text-primary mb-4" />
+          <img src="/logo.png" alt="NudgeBot" className="w-20 h-20 mb-4" />
           <h1 className="text-2xl font-bold text-foreground">Sign in to NudgeBot</h1>
         </div>
 

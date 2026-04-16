@@ -68,8 +68,8 @@ export default function Home() {
 
     try {
       const response = await api.postStream('/chat', {
-          user_id: user.id,
-          messages: newMessages.map(m => ({ role: m.role, content: m.content }))
+        user_id: user.id,
+        messages: newMessages.map(m => ({ role: m.role, content: m.content }))
       });
 
       if (!response.ok) {
@@ -153,7 +153,7 @@ export default function Home() {
     <div className="flex h-screen bg-background">
       <div className="w-64 border-r border-border bg-card flex flex-col hidden md:flex">
         <div className="p-4 border-b border-border flex items-center space-x-2">
-          <Brain className="w-6 h-6 text-primary" />
+          <img src="/logo.png" alt="NudgeBot" className="w-8 h-8" />
           <span className="font-bold text-lg text-foreground">NudgeBot</span>
         </div>
 
@@ -214,8 +214,8 @@ export default function Home() {
 
                 {msg.content && (
                   <div className={`max-w-[90%] md:max-w-3xl p-4 rounded-xl shadow-sm ${msg.role === 'user'
-                      ? 'bg-primary text-primary-foreground rounded-br-none'
-                      : 'bg-card border border-border text-foreground rounded-bl-none'
+                    ? 'bg-primary text-primary-foreground rounded-br-none'
+                    : 'bg-card border border-border text-foreground rounded-bl-none'
                     }`}>
                     <div className={`prose dark:prose-invert max-w-none text-sm break-words ${msg.role === 'user' ? 'prose-p:text-primary-foreground prose-headings:text-primary-foreground prose-strong:text-primary-foreground' : ''}`}>
                       {msg.role === 'assistant' ? (
