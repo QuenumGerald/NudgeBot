@@ -2,8 +2,8 @@ services:
   - type: web
     name: nudgebot
     env: node
-    buildCommand: "npm run build"
-    startCommand: "npm start"
+    buildCommand: "cd frontend && npm install && npm run build && cd ../backend && npm install && npm run build"
+    startCommand: "cd backend && npm start"
     envVars:
       - key: NODE_ENV
         value: production
@@ -11,15 +11,53 @@ services:
         value: 3000
       - key: DATABASE_URL
         value: /data/nudgebot.sqlite
+      - key: NUDGEBOT_WORKDIR
+        value: /data/workspace
       - key: ADMIN_PASSWORD
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: JWT_EXPIRES_IN
+        value: 12h
       - key: CORS_ORIGIN
         sync: false
-      - key: OPENROUTER_API_KEY
-        sync: false
+      - key: RATE_LIMIT_MAX
+        value: 300
+      - key: LLM_PROVIDER
+        value: deepseek
+      - key: LLM_MODEL
+        value: deepseek-chat
       - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DEEPSEEK_BASE_URL
+        value: https://api.deepseek.com
+      - key: GITHUB_CONTEXT_TOKEN
+        sync: false
+      - key: GITHUB_CONTEXT_REPO
+        sync: false
+      - key: GITHUB_PERSONAL_ACCESS_TOKEN
+        sync: false
+      - key: JIRA_API_TOKEN
+        sync: false
+      - key: JIRA_EMAIL
+        sync: false
+      - key: JIRA_URL
+        sync: false
+      - key: CONFLUENCE_API_TOKEN
+        sync: false
+      - key: CONFLUENCE_EMAIL
+        sync: false
+      - key: CONFLUENCE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REFRESH_TOKEN
+        sync: false
+      - key: RENDER_API_KEY
+        sync: false
+      - key: NETLIFY_AUTH_TOKEN
         sync: false
     disk:
       name: nudgebot-data

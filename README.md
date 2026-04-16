@@ -319,7 +319,23 @@ Serves frontend static assets + API from a single Express process on `PORT`.
 
 ## Deploy on Render
 
-### Prerequisites
+### Option 1: Using render.yaml (Recommended)
+
+The repository includes a `render.yaml` configuration file. Connect your GitHub repo to Render and it will automatically detect and use this configuration.
+
+**Manual setup steps:**
+1. Push your code to GitHub
+2. Go to Render dashboard → New + → Web Service
+3. Connect your GitHub repository
+4. Render will detect `render.yaml` and pre-fill the configuration
+5. Set the sensitive environment variables (marked `sync: false` in render.yaml)
+6. Deploy
+
+### Option 2: Manual Configuration
+
+If you prefer manual configuration, follow these steps:
+
+#### Prerequisites
 
 - A Render account (free tier available)
 - GitHub repository connected to Render
