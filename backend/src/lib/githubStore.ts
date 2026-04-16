@@ -4,7 +4,7 @@
  * Replaces SQLite entirely — zero native dependencies.
  */
 
-import { initGitHubContextManager, getGitHubContextManager } from "./githubContextManager.js";
+import { initGitHubContextManager, getGitHubMemoryManager } from "./githubContextManager.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -66,9 +66,10 @@ class GitHubStore {
   async init(): Promise<void> {
     if (this.initialized) return;
 
-    const mgr = await initGitHubContextManager();
+    await initGitHubContextManager();
+    const mgr = getGitHubMemoryManager();
     if (!mgr) {
-      console.warn("[store] No GitHub context manager — running with empty in-memory store");
+      console.warn("[store] No GitHub memory manager — running with empty in-memory store");
       this.ensureAdminUser();
       this.initialized = true;
       return;
@@ -115,7 +116,7 @@ class GitHubStore {
   }
 
   private async saveToGitHub(): Promise<void> {
-    const mgr = getGitHubContextManager();
+    const mgr = getGitHubMemoryManager();
     if (!mgr) return;
 
     try {
@@ -137,7 +138,7 @@ class GitHubStore {
   }
 
   private async loadFile(filePath: string): Promise<unknown | null> {
-    const mgr = getGitHubContextManager();
+    const mgr = getGitHubMemoryManager();
     if (!mgr) return null;
 
     try {
@@ -279,4 +280,7 @@ export async function getStore(): Promise<GitHubStore> {
 
 export function getStoreSync(): GitHubStore | null {
   return store;
+}
+export function resetStoreForTesting(): void {
+  store = null;
 }

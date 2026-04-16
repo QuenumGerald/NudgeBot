@@ -55,7 +55,7 @@ export class GitHubContextManager {
   constructor(
     private readonly token: string,
     private readonly owner: string,
-    private readonly repo: string
+    public readonly repo: string
   ) {
     this.baseUrl = `https://api.github.com/repos/${owner}/${repo}`;
     this.headers = {
@@ -201,7 +201,7 @@ export class GitHubContextManager {
     return null;
   }
 
-  private async putFile(
+  public async putFile(
     filePath: string,
     content: string,
     message: string
@@ -209,7 +209,7 @@ export class GitHubContextManager {
     const sha = await this.getFileSha(filePath);
     const body: Record<string, string> = {
       message,
-      content: Buffer.from(content, "utf-8").toString("base64"),
+      content: Buffer.from(content, "utf8").toString("base64"),
       branch: "main",
     };
     if (sha) body.sha = sha;
@@ -318,9 +318,6 @@ export class GitHubContextManager {
 
 // ── Factory ───────────────────────────────────────────────────────────────────
 
-let instance: GitHubContextManager | null = null;
-let initPromise: Promise<GitHubContextManager | null> | null = null;
-
 /**
  * Resolves the authenticated GitHub user's login from the token.
  */
@@ -340,54 +337,58 @@ const resolveGitHubOwner = async (token: string): Promise<string | null> => {
   }
 };
 
-const initManager = async (): Promise<GitHubContextManager | null> => {
-  const token = (process.env.GITHUB_TOKEN || process.env.GITHUB_CONTEXT_TOKEN || process.env.GITHUB_PERSONAL_ACCESS_TOKEN || "").trim();
+let memoryInstance: GitHubContextManager | null = null;
+let workspaceInstance: GitHubContextManager | null = null;
+let initPromise: Promise<void> | null = null;
 
-  if (!token) {
-    console.warn("[github-ctx] No GitHub token found (checked GITHUB_TOKEN, GITHUB_CONTEXT_TOKEN, GITHUB_PERSONAL_ACCESS_TOKEN). Persistence disabled.");
-    return null;
-  }
-
-  // Derive owner from token if GITHUB_CONTEXT_REPO not provided
+const createManager = async (token: string, repoConfig?: string, defaultName?: string): Promise<GitHubContextManager | null> => {
   let owner: string;
   let repo: string;
 
-  const repoFull = (process.env.GITHUB_CONTEXT_REPO || process.env.GITHUB_REPO || "").trim();
-  if (repoFull) {
-    const parts = repoFull.split("/");
-    if (parts.length !== 2) {
-      console.error("[github-ctx] GITHUB_CONTEXT_REPO must be 'owner/repo-name'");
-      return null;
-    }
+  if (repoConfig) {
+    const parts = repoConfig.split("/");
+    if (parts.length !== 2) return null;
     [owner, repo] = parts;
   } else {
     const login = await resolveGitHubOwner(token);
-    if (!login) {
-      console.error("[github-ctx] Could not resolve GitHub user from token");
-      return null;
-    }
+    if (!login) return null;
     owner = login;
-    repo = "nudgebot-context";
-    console.log(`[github-ctx] GITHUB_CONTEXT_REPO not set — defaulting to ${owner}/${repo}`);
+    repo = defaultName || "nudgebot-data";
   }
 
   const manager = new GitHubContextManager(token, owner, repo);
   await manager.ensureRepoExists();
-  instance = manager;
-  return instance;
+  return manager;
 };
 
-/**
- * Async version — awaitable, safe to call multiple times.
- * Use this when you need to ensure init is complete before operating.
- */
-export const initGitHubContextManager = (): Promise<GitHubContextManager | null> => {
+const initManager = async (): Promise<void> => {
+  const token = (process.env.GITHUB_TOKEN || process.env.GITHUB_CONTEXT_TOKEN || "").trim();
+
+  if (!token) {
+    console.warn("[github-ctx] No token found. Dual-repo persistence disabled.");
+    return;
+  }
+
+  memoryInstance = await createManager(token, process.env.GITHUB_MEMORY_REPO || process.env.GITHUB_REPO, "nudgebot-memory");
+  workspaceInstance = await createManager(token, process.env.GITHUB_WORKSPACE_REPO, "nudgebot-workspace");
+
+  if (memoryInstance) console.log(`[github-ctx] Memory repo: ${memoryInstance.repo}`);
+  if (workspaceInstance) console.log(`[github-ctx] Workspace repo: ${workspaceInstance.repo}`);
+};
+
+export const initGitHubContextManager = (): Promise<void> => {
   if (!initPromise) initPromise = initManager();
   return initPromise;
 };
 
-/**
- * Sync accessor — returns null until initGitHubContextManager() has resolved.
- * Safe to call from non-async contexts once startup is done.
- */
-export const getGitHubContextManager = (): GitHubContextManager | null => instance;
+export const getGitHubMemoryManager = (): GitHubContextManager | null => memoryInstance;
+export const getGitHubWorkspaceManager = (): GitHubContextManager | null => workspaceInstance;
+
+// Compatibility aliases
+export const getGitHubContextManager = (): GitHubContextManager | null => memoryInstance;
+
+export const resetManagerForTesting = () => {
+  memoryInstance = null;
+  workspaceInstance = null;
+  initPromise = null;
+};

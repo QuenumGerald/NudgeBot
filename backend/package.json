@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "tsx src/server.ts",
     "start": "node dist/server.js",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": "",
@@ -33,6 +36,8 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "ts-node": "^10.9.2"
+    "@vitest/coverage-v8": "^4.1.4",
+    "ts-node": "^10.9.2",
+    "vitest": "^4.1.4"
   }
 }

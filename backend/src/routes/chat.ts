@@ -122,6 +122,27 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
       res.write(`data: ${JSON.stringify({ type: 'delta', content })}\n\n`);
     }
 
+    // Save updated context back to GitHub
+    try {
+      const { getGitHubContextManager } = await import('../lib/githubContextManager.js');
+      const mgr = getGitHubContextManager();
+      if (mgr) {
+        // Collect messages for context
+        const allMessages = [
+          ...langchainMessages,
+          new AIMessage(content)
+        ].map(m => ({
+          role: m instanceof HumanMessage ? 'user' : 'assistant',
+          content: String(m.content),
+          timestamp: new Date().toISOString()
+        }));
+
+        await mgr.saveUserContext(String(userId ?? ''), { messages: allMessages });
+      }
+    } catch (saveError) {
+      console.error('[chat] failed to save context:', saveError);
+    }
+
     res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
     res.end();
   } catch (error: unknown) {

@@ -16,7 +16,7 @@ const getProjectsRoot = () => {
   return path.resolve(base, "projects");
 };
 
-const normalizeProjectName = (projectName: string) =>
+export const normalizeProjectName = (projectName: string) =>
   projectName
     .trim()
     .toLowerCase()
@@ -500,11 +500,38 @@ export const readNoteTool = tool(
   }
 );
 
+export const syncToWorkspaceTool = tool(
+  async ({ filePath, message }: { filePath: string; message?: string }) => {
+    try {
+      const { getGitHubWorkspaceManager } = await import("../githubContextManager.js");
+      const mgr = getGitHubWorkspaceManager();
+      if (!mgr) return "Workspace GitHub repo not configured. Please set GITHUB_WORKSPACE_REPO.";
+
+      const resolvedPath = resolveSafePath(filePath);
+      const content = await fs.readFile(resolvedPath, "utf8");
+
+      const ok = await mgr.putFile(filePath, content, message || `Sync file: ${filePath}`);
+      return ok ? `File '${filePath}' successfully synced to GitHub workspace repository (${mgr.repo}).` : `Failed to sync '${filePath}' to GitHub.`;
+    } catch (e: any) {
+      return `Error during sync: ${e.message}`;
+    }
+  },
+  {
+    name: "sync_to_workspace",
+    description: "Syncs a local file from the workspace to the dedicated GitHub workspace repository for permanent storage.",
+    schema: z.object({
+      filePath: z.string().describe("Relative path to the file in the local workspace."),
+      message: z.string().optional().describe("Optional commit message."),
+    }),
+  }
+);
+
 // ── Export all tools ──────────────────────────────────────────────────────────
 
 export const tools = [
   // Workspace
   createProjectWorkspaceTool,
+  syncToWorkspaceTool,
   // File ops
   createFileTool,
   readFileTool,

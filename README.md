@@ -95,11 +95,12 @@ The agent is a [LangGraph](https://langchain-ai.github.io/langgraphjs/) `StateGr
 
 | Category | Tool | What it does |
 |---|---|---|
-| **Workspace** | `create_project_workspace` | Creates a sandboxed subfolder per project under `NUDGEBOT_WORKDIR` |
-| **Files** | `create_file` | Creates or appends to a file (workspace-restricted) |
-| | `read_file` | Reads a file |
-| | `list_directory` | Lists a directory |
-| | `delete_file` | Deletes a file |
+| **Workspace** | `create_project_workspace` | Creates a local subfolder per project under `NUDGEBOT_WORKDIR` |
+| | `sync_to_workspace` | Pushes local files to the GitHub Workspace repository |
+| **Files** | `create_file` | Creates or appends to a local file (workspace-restricted) |
+| | `read_file` | Reads a local file |
+| | `list_directory` | Lists a local directory |
+| | `delete_file` | Deletes a local file |
 | **Shell** | `execute_command` | Runs a shell command in the workspace (15s timeout) |
 | **Scheduling** | `schedule_task` | Schedules a one-off or recurring task via BlazerJob |
 | | `list_tasks` | Lists active scheduled tasks |
@@ -239,8 +240,9 @@ RESEND_API_KEY=
 RESEND_FROM_EMAIL=notifications@your-domain.com
 
 # GitHub (Master access)
-GITHUB_TOKEN=                   # Master PAT (repo scope) - used for memory, settings, and MCP
-GITHUB_REPO=                    # e.g. mylogin/nudgebot-context (auto-created if blank)
+GITHUB_TOKEN=                   # Master PAT (repo scope)
+GITHUB_MEMORY_REPO=             # e.g. mylogin/nudgebot-memory (brain/settings/history)
+GITHUB_WORKSPACE_REPO=          # e.g. mylogin/nudgebot-workspace (project code)
 
 # MCP: GitHub (Optional fallback)
 GITHUB_PERSONAL_ACCESS_TOKEN=
@@ -371,10 +373,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com
 
 # GitHub (Master access)
 GITHUB_TOKEN=your-github-pat
-GITHUB_REPO=your-username/nudgebot-context
-
-# MCP: GitHub (Optional fallback)
-GITHUB_PERSONAL_ACCESS_TOKEN=
+GITHUB_MEMORY_REPO=your-username/nudgebot-memory
+GITHUB_WORKSPACE_REPO=your-username/nudgebot-workspace
 
 # MCP integrations (optional)
 JIRA_API_TOKEN=
