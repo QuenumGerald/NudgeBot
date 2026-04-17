@@ -37,12 +37,33 @@ export default function Home() {
   const { theme, setTheme } = useTheme();
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const storageKey = `chat_messages_${user.id ?? 'anonymous'}`;
 
   useEffect(() => {
     if (!user.id) {
       navigate('/login');
     }
   }, [user.id, navigate]);
+
+  useEffect(() => {
+    if (!user.id) return;
+    const savedMessages = localStorage.getItem(storageKey);
+    if (!savedMessages) return;
+
+    try {
+      const parsed = JSON.parse(savedMessages) as Message[];
+      if (Array.isArray(parsed)) {
+        setMessages(parsed);
+      }
+    } catch (error) {
+      console.error('Could not restore saved conversation:', error);
+    }
+  }, [storageKey, user.id]);
+
+  useEffect(() => {
+    if (!user.id) return;
+    localStorage.setItem(storageKey, JSON.stringify(messages));
+  }, [messages, storageKey, user.id]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -56,6 +77,11 @@ export default function Home() {
     localStorage.removeItem('user');
     localStorage.removeItem('auth_token');
     navigate('/login');
+  };
+
+  const handleNewConversation = () => {
+    setMessages([]);
+    localStorage.removeItem(storageKey);
   };
 
   const sendMessage = async () => {
@@ -159,7 +185,10 @@ export default function Home() {
 
         <div className="flex-1 overflow-y-auto p-4">
           <div className="text-sm text-muted-foreground mb-4">Chat History</div>
-          <div className="p-2 hover:bg-muted rounded-md cursor-pointer text-sm truncate transition-colors">
+          <div
+            className="p-2 hover:bg-muted rounded-md cursor-pointer text-sm truncate transition-colors"
+            onClick={handleNewConversation}
+          >
             New Conversation
           </div>
         </div>
