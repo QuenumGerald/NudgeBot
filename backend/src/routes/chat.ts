@@ -24,6 +24,17 @@ const getLLMConfigFromEnv = () => {
   return { provider, model, apiKey };
 };
 
+const getGraphRecursionLimit = (): number => {
+  const rawLimit = (process.env.LANGGRAPH_RECURSION_LIMIT || '').trim();
+  const parsedLimit = Number.parseInt(rawLimit, 10);
+
+  if (!Number.isFinite(parsedLimit) || parsedLimit < 1) {
+    return 50;
+  }
+
+  return parsedLimit;
+};
+
 type ChatBody = {
   messages?: Array<{ role?: string; content?: string }>;
 };
@@ -112,7 +123,11 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
       return new HumanMessage(String(m?.content ?? ''));
     });
 
-    const result = await agent.invoke({ messages: langchainMessages }) as { messages?: Array<{ content?: unknown }> };
+    const recursionLimit = getGraphRecursionLimit();
+    const result = await agent.invoke(
+      { messages: langchainMessages },
+      { recursionLimit }
+    ) as { messages?: Array<{ content?: unknown }> };
 
     const outMessages = Array.isArray(result?.messages) ? result.messages : [];
     const last = outMessages[outMessages.length - 1];
