@@ -29,7 +29,7 @@ const getGraphRecursionLimit = (): number => {
   const parsedLimit = Number.parseInt(rawLimit, 10);
 
   if (!Number.isFinite(parsedLimit) || parsedLimit < 1) {
-    return 50;
+    return 200;
   }
 
   return parsedLimit;
