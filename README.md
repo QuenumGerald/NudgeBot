@@ -91,7 +91,7 @@ No third-party memory service. No vector DB. Just a GitHub repo you already have
 
 The agent is a [LangGraph](https://langchain-ai.github.io/langgraphjs/) `StateGraph` that loops `LLM → tools → LLM` until no more tool calls are needed. Supported providers: **DeepSeek**, **OpenRouter**, **OpenAI** (configurable per user in Settings).
 
-#### Built-in tools (16)
+#### Built-in tools (17)
 
 | Category | Tool | What it does |
 |---|---|---|
@@ -111,6 +111,7 @@ The agent is a [LangGraph](https://langchain-ai.github.io/langgraphjs/) `StateGr
 | **Notes** | `save_note` | Saves a persistent note to the GitHub context repo |
 | | `list_notes` | Lists all saved notes |
 | | `read_note` | Reads a note by title |
+| **Google Jules** | `list_jules_sessions` | Lists Jules sessions (supports `pageSize` / `pageToken`) via REST |
 | **AI Coding** | `run_jules_session` | Launches a Google Jules session → returns PR URL |
 
 ---

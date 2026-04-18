@@ -404,6 +404,50 @@ export const listJulesSourcesTool = tool(
   }
 );
 
+export const listJulesSessionsTool = tool(
+  async ({ pageSize, pageToken }: { pageSize?: number; pageToken?: string }) => {
+    if (!process.env.JULES_API_KEY) {
+      return "JULES_API_KEY is missing. Configure it before using this tool.";
+    }
+
+    try {
+      const qs = new URLSearchParams();
+      if (typeof pageSize === "number") qs.set("pageSize", String(pageSize));
+      if (pageToken) qs.set("pageToken", pageToken);
+
+      const endpoint = `https://jules.googleapis.com/v1alpha/sessions${qs.size ? `?${qs.toString()}` : ""}`;
+      const res = await fetch(endpoint, {
+        headers: {
+          "x-goog-api-key": process.env.JULES_API_KEY,
+          Accept: "application/json",
+        },
+      });
+
+      const bodyText = await res.text();
+      if (!res.ok) {
+        return `Failed to list Jules sessions (${res.status} ${res.statusText}): ${bodyText}`;
+      }
+
+      try {
+        const parsed = JSON.parse(bodyText);
+        return JSON.stringify(parsed, null, 2);
+      } catch {
+        return bodyText;
+      }
+    } catch (e: any) {
+      return `Failed to list Jules sessions: ${e.message}`;
+    }
+  },
+  {
+    name: "list_jules_sessions",
+    description: "Lists Google Jules sessions through the Jules REST API.",
+    schema: z.object({
+      pageSize: z.number().int().positive().max(100).optional().describe("Maximum sessions to return (default API behavior applies when omitted)."),
+      pageToken: z.string().optional().describe("Pagination token returned by a previous list request."),
+    }),
+  }
+);
+
 // ── Web / Utility tools ───────────────────────────────────────────────────────
 
 export const webFetchTool = tool(
@@ -653,5 +697,6 @@ export const tools = [
   readNoteTool,
   // Google Jules
   listJulesSourcesTool,
+  listJulesSessionsTool,
   julesSessionTool,
 ];

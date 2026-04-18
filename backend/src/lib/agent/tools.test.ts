@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createProjectWorkspaceTool, normalizeProjectName, julesSessionTool, listJulesSourcesTool } from './tools.js';
+import { createProjectWorkspaceTool, normalizeProjectName, julesSessionTool, listJulesSourcesTool, listJulesSessionsTool } from './tools.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -61,6 +61,21 @@ describe('Agent Tools', () => {
             const result = await listJulesSourcesTool.invoke({});
             expect(result).toContain('JULES_API_KEY is missing');
             if (original) process.env.JULES_API_KEY = original;
+        });
+    });
+
+    describe('listJulesSessionsTool', () => {
+        it('should validate schema with optional pagination fields', () => {
+            const parsed = listJulesSessionsTool.schema.safeParse({
+                pageSize: 5,
+                pageToken: 'abc123'
+            });
+
+            expect(parsed.success).toBe(true);
+            if (parsed.success) {
+                expect(parsed.data.pageSize).toBe(5);
+                expect(parsed.data.pageToken).toBe('abc123');
+            }
         });
     });
 });
