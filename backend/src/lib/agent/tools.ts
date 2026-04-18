@@ -331,7 +331,9 @@ export const julesSessionTool = tool(
 
       const outcome = await run.result();
       const prUrl = outcome.pullRequest?.url || "";
-      const generatedFiles = outcome.generatedFiles ? outcome.generatedFiles().map((f: any) => ({ path: f.path, content: f.content })) : [];
+      const generatedFiles = outcome.generatedFiles
+        ? outcome.generatedFiles().all().map((f: any) => ({ path: f.path, content: f.content }))
+        : [];
 
       return JSON.stringify(
         {
