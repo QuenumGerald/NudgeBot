@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Brain, LogOut, Settings as SettingsIcon, Send, Moon, Sun, Wrench } from 'lucide-react';
+import { Brain, LogOut, Settings as SettingsIcon, Send, Moon, Sun, Wrench, X, Zap } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -32,8 +32,11 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [isRequestInFlight, setIsRequestInFlight] = useState(false);
+  const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<Message[]>([]);
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
 
@@ -66,6 +69,10 @@ export default function Home() {
     localStorage.setItem(storageKey, JSON.stringify(messages));
   }, [messages, storageKey, user.id]);
 
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -85,13 +92,15 @@ export default function Home() {
     localStorage.removeItem(storageKey);
   };
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
+  const processMessage = async (messageText: string) => {
+    const trimmedMessage = messageText.trim();
+    if (!trimmedMessage) return;
 
-    const newMessages = [...messages, { role: 'user', content: input } as Message];
+    const currentMessages = messagesRef.current;
+    const newMessages = [...currentMessages, { role: 'user', content: trimmedMessage } as Message];
     setMessages(newMessages);
-    setInput('');
     setIsThinking(true);
+    setIsRequestInFlight(true);
     setActiveToolName(null);
 
     try {
@@ -179,15 +188,44 @@ export default function Home() {
         };
         setMessages([...newMessages, errorMsg]);
       }
+    } finally {
       setIsThinking(false);
       setActiveToolName(null);
+      setIsRequestInFlight(false);
     }
+  };
+
+  useEffect(() => {
+    if (isRequestInFlight || queuedMessages.length === 0) return;
+    const [nextMessage, ...remaining] = queuedMessages;
+    setQueuedMessages(remaining);
+    void processMessage(nextMessage);
+  }, [queuedMessages, isRequestInFlight]);
+
+  const enqueueMessage = () => {
+    const trimmedInput = input.trim();
+    if (!trimmedInput) return;
+    setQueuedMessages(prev => [...prev, trimmedInput]);
+    setInput('');
+  };
+
+  const cancelQueuedMessage = (index: number) => {
+    setQueuedMessages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const forceQueuedMessage = (index: number) => {
+    setQueuedMessages(prev => {
+      if (index <= 0 || index >= prev.length) return prev;
+      const forced = prev[index];
+      const rest = prev.filter((_, i) => i !== index);
+      return [forced, ...rest];
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      enqueueMessage();
     }
   };
 
@@ -331,7 +369,7 @@ export default function Home() {
         </div>
 
         <div className="p-4 bg-background border-t border-border">
-          {(isThinking || activeToolName) && (
+          {(isThinking || activeToolName || isRequestInFlight || queuedMessages.length > 0) && (
             <div className="max-w-3xl mx-auto mb-3">
               {isThinking && (
                 <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
@@ -343,6 +381,46 @@ export default function Home() {
                 <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground ml-2">
                   <Wrench className="w-3.5 h-3.5 text-primary" />
                   <span>Utilisation de l’outil: <span className="font-mono">{activeToolName}</span></span>
+                </div>
+              )}
+              {queuedMessages.length > 0 && (
+                <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground ml-2">
+                  <Send className="w-3.5 h-3.5 text-primary" />
+                  <span>{queuedMessages.length} message{queuedMessages.length > 1 ? 's' : ''} en file d’attente</span>
+                </div>
+              )}
+
+              {queuedMessages.length > 0 && (
+                <div className="mt-3 rounded-xl border border-border bg-card p-2 space-y-2">
+                  {queuedMessages.map((queuedMessage, idx) => (
+                    <div key={`${queuedMessage}-${idx}`} className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-2 py-1.5">
+                      <span className="text-xs text-muted-foreground truncate">
+                        #{idx + 1} — {queuedMessage}
+                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {idx > 0 && (
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            onClick={() => forceQueuedMessage(idx)}
+                            aria-label={`Forcer l'envoi du message ${idx + 1}`}
+                            title="Forcer en prochain"
+                          >
+                            <Zap className="w-3.5 h-3.5 text-primary" />
+                          </Button>
+                        )}
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          onClick={() => cancelQueuedMessage(idx)}
+                          aria-label={`Annuler le message ${idx + 1}`}
+                          title="Annuler ce message"
+                        >
+                          <X className="w-3.5 h-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -360,8 +438,8 @@ export default function Home() {
               <Button
                 size="icon"
                 className="rounded-lg h-10 w-10 shrink-0"
-                disabled={!input.trim() || isThinking}
-                onClick={sendMessage}
+                disabled={!input.trim()}
+                onClick={enqueueMessage}
               >
                 <Send className="w-4 h-4" />
               </Button>

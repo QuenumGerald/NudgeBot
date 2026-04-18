@@ -86,6 +86,7 @@ Tu travailles selon une architecture **Dual-Repo** :
 - Email : envoyer via Resend.
 - Notes : persistance sur GitHub (Mémoire).
 - Google Jules : déléguer le développement.
+  - Quand tu utilises Jules, n'attends pas de réponse intermédiaire côté utilisateur : envoie la requête, laisse la session aller au bout, puis envoie un rapport clair à l'utilisateur (résumé, statut, PR/livrables).
 ${mcpTools.length > 0 ? `- MCP : ${enabledIntegrations.join(", ")} (${mcpTools.length} outils chargés)` : ""}
 
 Utilise les outils de manière proactive. La persistance sur GitHub est ta priorité absolue.
