@@ -130,6 +130,49 @@ NudgeBot: [runs Jules] → PR created: https://github.com/myorg/myapi/pull/42
 
 Requires: `JULES_API_KEY` + `GITHUB_PERSONAL_ACCESS_TOKEN`
 
+#### Jules SDK quick reference
+
+If you want to call Jules directly from scripts (outside NudgeBot), the backend uses [`@google/jules-sdk`](https://www.npmjs.com/package/@google/jules-sdk).
+
+```bash
+npm i @google/jules-sdk
+export JULES_API_KEY=<api-key>
+```
+
+**Create a cloud coding session**
+
+```ts
+import { jules } from "@google/jules-sdk";
+
+const session = await jules.session({
+  prompt: "Refactor the user authentication module.",
+  source: { github: "your-org/your-repo", baseBranch: "main" },
+  autoPr: true,
+});
+```
+
+**Watch progress as activities stream in**
+
+```ts
+for await (const activity of session.stream()) {
+  if (activity.type === "progressUpdated") {
+    console.log(activity.title);
+  }
+}
+
+const outcome = await session.result();
+console.log(outcome.pullRequest?.url);
+```
+
+**Useful SDK patterns**
+
+- `jules.all(...)` for batched/fleet execution with concurrency limits
+- `jules.select(...)` to query the local session/activity cache
+- `artifact.parsed()` for structured file-level diff stats
+- `jules.with({ apiKey, pollingIntervalMs, timeout })` for per-client config
+
+> Note: Jules sessions can also run without a GitHub repo ("repoless" mode) when you only need generated outputs.
+
 ---
 
 ### 🔌 MCP integrations — on-demand, per user
