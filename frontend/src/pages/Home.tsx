@@ -32,6 +32,7 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
@@ -91,6 +92,7 @@ export default function Home() {
     setMessages(newMessages);
     setInput('');
     setIsThinking(true);
+    setActiveToolName(null);
 
     try {
       const response = await api.postStream('/chat', {
@@ -131,11 +133,13 @@ export default function Home() {
                 const data = JSON.parse(dataStr) as StreamEvent;
 
                 if (data.type === 'thinking') {
-                  setIsThinking(false);
+                  setIsThinking(true);
                 } else if (data.type === 'delta') {
                   assistantMessage.content += data.content;
                   setMessages([...newMessages, { ...assistantMessage }]);
                 } else if (data.type === 'tool_start') {
+                  setIsThinking(false);
+                  setActiveToolName(data.tool_name);
                   assistantMessage.tools = assistantMessage.tools || [];
                   assistantMessage.tools.push({ name: data.tool_name, input: data.input });
                   setMessages([...newMessages, { ...assistantMessage }]);
@@ -145,14 +149,17 @@ export default function Home() {
                   if (toolIndex !== -1) {
                     assistantMessage.tools[toolIndex].result = data.result;
                   }
+                  setActiveToolName(null);
                   setMessages([...newMessages, { ...assistantMessage }]);
                 } else if (data.type === 'error') {
                   console.error("Chat Error:", data.error);
                   assistantMessage.content += `\n\n**Error:** ${data.error}`;
                   setMessages([...newMessages, { ...assistantMessage }]);
                   setIsThinking(false);
+                  setActiveToolName(null);
                 } else if (data.type === 'done') {
                   setIsThinking(false);
+                  setActiveToolName(null);
                 }
               } catch (e) {
                 console.error("Error parsing SSE data:", e, "Chunk:", chunk);
@@ -173,6 +180,7 @@ export default function Home() {
         setMessages([...newMessages, errorMsg]);
       }
       setIsThinking(false);
+      setActiveToolName(null);
     }
   };
 
@@ -218,6 +226,29 @@ export default function Home() {
       </div>
 
       <div className="flex-1 flex flex-col relative max-w-full">
+        <div className="md:hidden border-b border-border bg-card px-3 py-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <img src="/logo.png" alt="NudgeBot" className="w-7 h-7" />
+              <span className="font-semibold text-foreground">NudgeBot</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon-sm" onClick={handleNewConversation} aria-label="New conversation">
+                <Wrench className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Toggle theme">
+                {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => navigate('/settings')} aria-label="Settings">
+                <SettingsIcon className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleLogout} aria-label="Logout">
+                <LogOut className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground space-y-4">
@@ -300,6 +331,22 @@ export default function Home() {
         </div>
 
         <div className="p-4 bg-background border-t border-border">
+          {(isThinking || activeToolName) && (
+            <div className="max-w-3xl mx-auto mb-3">
+              {isThinking && (
+                <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+                  <Brain className="w-3.5 h-3.5 animate-pulse text-primary" />
+                  <span>NudgeBot réfléchit…</span>
+                </div>
+              )}
+              {activeToolName && (
+                <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground ml-2">
+                  <Wrench className="w-3.5 h-3.5 text-primary" />
+                  <span>Utilisation de l’outil: <span className="font-mono">{activeToolName}</span></span>
+                </div>
+              )}
+            </div>
+          )}
           <div className="max-w-3xl mx-auto relative flex items-end shadow-sm border border-border rounded-xl bg-card focus-within:ring-1 focus-within:ring-primary transition-shadow">
             <Textarea
               value={input}
