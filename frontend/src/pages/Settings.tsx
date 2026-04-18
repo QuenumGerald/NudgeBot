@@ -61,8 +61,8 @@ export default function Settings() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-8">
-      <div className="max-w-2xl mx-auto space-y-8">
+    <div className="min-h-screen bg-background p-4 md:p-8">
+      <div className="max-w-2xl mx-auto space-y-6 md:space-y-8">
         <div className="flex items-center space-x-4">
           <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
             <ArrowLeft className="w-5 h-5" />
@@ -73,7 +73,7 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="bg-card p-6 rounded-xl border border-border space-y-4">
+        <div className="bg-card p-4 md:p-6 rounded-xl border border-border space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">Provider</label>
             <Input
