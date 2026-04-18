@@ -261,23 +261,52 @@ export const julesSessionTool = tool(
 
     try {
       const { jules } = await import("@google/jules-sdk");
-      // Keep the REST-compatible payload shape used by Jules (no requireApproval field).
-      const session = await jules.session({
+      const run = await jules.run({
         prompt,
         source: { github: githubRepository, baseBranch },
+        requireApproval: false,
         autoPr,
       });
 
       const progress: string[] = [];
+      const planSteps: string[] = [];
+      const agentMessages: string[] = [];
+      const changeStats: Array<{ path: string; additions: number; deletions: number }> = [];
+      const bashLogs: string[] = [];
       const streamWarmupTimeoutMs = 30000;
       const streamRetryDelayMs = 1500;
       const startedAt = Date.now();
 
       while (true) {
         try {
-          for await (const activity of session.stream()) {
+          for await (const activity of run.stream()) {
             if (activity.type === "progressUpdated") {
               progress.push(activity.title || "Progress updated");
+            }
+            if (activity.type === "planGenerated") {
+              for (const step of activity.plan.steps) {
+                if (step.title) {
+                  planSteps.push(step.title);
+                }
+              }
+            }
+            if (activity.type === "agentMessaged" && activity.message) {
+              agentMessages.push(activity.message);
+            }
+            for (const artifact of activity.artifacts ?? []) {
+              if (artifact.type === "changeSet") {
+                const parsed = artifact.parsed();
+                for (const file of parsed.files) {
+                  changeStats.push({
+                    path: file.path,
+                    additions: file.additions,
+                    deletions: file.deletions,
+                  });
+                }
+              }
+              if (artifact.type === "bashOutput") {
+                bashLogs.push(artifact.toString());
+              }
             }
             if (activity.type === "sessionCompleted" || activity.type === "sessionFailed") {
               break;
@@ -297,15 +326,19 @@ export const julesSessionTool = tool(
         }
       }
 
-      const outcome: any = await session.result();
-      const prUrl = outcome?.pullRequest?.url || "";
+      const outcome = await run.result();
+      const prUrl = outcome.pullRequest?.url || "";
 
       return JSON.stringify(
         {
-          sessionId: session.id,
+          sessionId: run.id,
+          planSteps,
           progress,
+          agentMessages: agentMessages.slice(-5),
+          changeStats,
+          bashLogs: bashLogs.slice(-5),
           pullRequestUrl: prUrl || null,
-          state: outcome?.state || null,
+          state: outcome.state || null,
         },
         null,
         2
