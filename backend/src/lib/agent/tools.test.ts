@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createProjectWorkspaceTool, normalizeProjectName, julesSessionTool } from './tools.js';
+import { createProjectWorkspaceTool, normalizeProjectName, julesSessionTool, listJulesSessionsTool } from './tools.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -50,6 +50,17 @@ describe('Agent Tools', () => {
             if (parsed.success) {
                 expect(parsed.data.prompt).toBe('Hello world');
                 expect(parsed.data.githubRepository).toBeUndefined();
+            }
+        });
+    });
+
+    describe('listJulesSessionsTool', () => {
+        it('should validate schema with default page size', async () => {
+            const parsed = listJulesSessionsTool.schema.safeParse({});
+            expect(parsed.success).toBe(true);
+            if (parsed.success) {
+                expect(parsed.data.pageSize).toBe(5);
+                expect(parsed.data.pageToken).toBeUndefined();
             }
         });
     });

@@ -331,7 +331,9 @@ export const julesSessionTool = tool(
 
       const outcome = await run.result();
       const prUrl = outcome.pullRequest?.url || "";
-      const generatedFiles = outcome.generatedFiles ? outcome.generatedFiles().map((f: any) => ({ path: f.path, content: f.content })) : [];
+      const generatedFiles = outcome.generatedFiles
+        ? outcome.generatedFiles().all().map((f: any) => ({ path: f.path, content: f.content }))
+        : [];
 
       return JSON.stringify(
         {
@@ -364,6 +366,47 @@ export const julesSessionTool = tool(
       githubRepository: z.string().optional().describe("GitHub repository in owner/repo format."),
       baseBranch: z.string().optional().describe("Base branch for Jules work."),
       autoPr: z.boolean().default(true).describe("Whether Jules should automatically create a pull request."),
+    }),
+  }
+);
+
+export const listJulesSessionsTool = tool(
+  async ({ pageSize, pageToken }: { pageSize: number; pageToken?: string }) => {
+    if (!process.env.JULES_API_KEY) {
+      return "JULES_API_KEY is missing. Configure it before using this tool.";
+    }
+
+    try {
+      const params = new URLSearchParams();
+      params.set("pageSize", String(pageSize));
+      if (pageToken) {
+        params.set("pageToken", pageToken);
+      }
+
+      const response = await fetch(`https://jules.googleapis.com/v1alpha/sessions?${params.toString()}`, {
+        headers: {
+          "x-goog-api-key": process.env.JULES_API_KEY,
+          "User-Agent": "NudgeBot/1.0",
+        },
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        return `Failed to list Jules sessions: HTTP ${response.status} ${response.statusText}${body ? ` — ${body.slice(0, 500)}` : ""}`;
+      }
+
+      const data = await response.json();
+      return JSON.stringify(data, null, 2);
+    } catch (e: any) {
+      return `Failed to list Jules sessions: ${e.message}`;
+    }
+  },
+  {
+    name: "list_jules_sessions",
+    description: "Lists Google Jules sessions via the Jules REST API. Supports pagination with pageSize and pageToken.",
+    schema: z.object({
+      pageSize: z.number().int().min(1).max(100).default(5).describe("Number of sessions to fetch (1-100)."),
+      pageToken: z.string().optional().describe("Pagination token from a previous list response."),
     }),
   }
 );
@@ -617,4 +660,5 @@ export const tools = [
   readNoteTool,
   // Google Jules
   julesSessionTool,
+  listJulesSessionsTool,
 ];
