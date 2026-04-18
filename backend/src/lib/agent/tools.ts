@@ -368,6 +368,42 @@ export const julesSessionTool = tool(
   }
 );
 
+export const listJulesSourcesTool = tool(
+  async () => {
+    if (!process.env.JULES_API_KEY) {
+      return "JULES_API_KEY is missing. Configure it before using this tool.";
+    }
+
+    try {
+      const res = await fetch("https://jules.googleapis.com/v1alpha/sources", {
+        headers: {
+          "x-goog-api-key": process.env.JULES_API_KEY,
+          Accept: "application/json",
+        },
+      });
+
+      const bodyText = await res.text();
+      if (!res.ok) {
+        return `Failed to list Jules sources (${res.status} ${res.statusText}): ${bodyText}`;
+      }
+
+      try {
+        const parsed = JSON.parse(bodyText);
+        return JSON.stringify(parsed, null, 2);
+      } catch {
+        return bodyText;
+      }
+    } catch (e: any) {
+      return `Failed to list Jules sources: ${e.message}`;
+    }
+  },
+  {
+    name: "list_jules_sources",
+    description: "Lists available Google Jules sources using the Jules REST API.",
+    schema: z.object({}),
+  }
+);
+
 // ── Web / Utility tools ───────────────────────────────────────────────────────
 
 export const webFetchTool = tool(
@@ -616,5 +652,6 @@ export const tools = [
   listNotesTool,
   readNoteTool,
   // Google Jules
+  listJulesSourcesTool,
   julesSessionTool,
 ];
