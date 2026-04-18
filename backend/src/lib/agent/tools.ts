@@ -35,6 +35,21 @@ const resolveSafePath = (requestedPath: string) => {
   return resolvedPath;
 };
 
+const normalizeGithubRepositorySource = (githubRepository: string) => {
+  const normalizedRepo = githubRepository
+    .trim()
+    .replace(/^https?:\/\/github\.com\//i, "")
+    .replace(/^github\.com\//i, "")
+    .replace(/\.git$/i, "")
+    .replace(/^sources\/github\//i, "");
+
+  if (!/^[^/\s]+\/[^/\s]+$/.test(normalizedRepo)) {
+    throw new Error("Invalid githubRepository format. Expected owner/repo.");
+  }
+
+  return `sources/github/${normalizedRepo}`;
+};
+
 // ── Task registry ─────────────────────────────────────────────────────────────
 
 const taskRegistry = new Map<number, { name: string; description: string; createdAt: string }>();
@@ -260,11 +275,12 @@ export const julesSessionTool = tool(
     }
 
     try {
+      const githubSource = normalizeGithubRepositorySource(githubRepository);
       const { jules } = await import("@google/jules-sdk");
       // Keep the REST-compatible payload shape used by Jules (no requireApproval field).
       const session = await jules.session({
         prompt,
-        source: { github: githubRepository, baseBranch },
+        source: { github: githubSource, baseBranch },
         autoPr,
       });
 
@@ -312,10 +328,16 @@ export const julesSessionTool = tool(
       );
     } catch (e: any) {
       const errorCode = e?.code;
+      const errorMessage = e?.message || "";
+      const errorStatus = e?.status ?? e?.statusCode ?? e?.response?.status;
+
       if (errorCode === "ERR_MODULE_NOT_FOUND" || /@google\/jules-sdk/.test(e?.message || "")) {
         return "Failed to run Jules session: missing dependency @google/jules-sdk. Install backend dependencies with `npm install` in /backend.";
       }
-      return `Failed to run Jules session: ${e.message}`;
+      if (errorStatus === 404 || (/404/.test(errorMessage) && /not\s*found/i.test(errorMessage))) {
+        return "Failed to run Jules session: repository not found (404). Ensure githubRepository is in owner/repo format, the repository exists, and access is allowed.";
+      }
+      return `Failed to run Jules session: ${errorMessage}`;
     }
   },
   {
