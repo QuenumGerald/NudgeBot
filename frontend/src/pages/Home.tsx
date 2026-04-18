@@ -164,6 +164,14 @@ export default function Home() {
       }
     } catch (error) {
       console.error("Fetch error:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage !== 'Unauthorized') {
+        const errorMsg: Message = {
+          role: 'assistant',
+          content: `**Error:** Could not connect to the server or process the request. (${errorMessage})`
+        };
+        setMessages([...newMessages, errorMsg]);
+      }
       setIsThinking(false);
     }
   };
