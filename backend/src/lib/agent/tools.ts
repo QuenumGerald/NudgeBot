@@ -254,19 +254,22 @@ export const executeCommandTool = tool(
 );
 
 export const julesSessionTool = tool(
-  async ({ prompt, githubRepository, baseBranch, autoPr }: { prompt: string; githubRepository: string; baseBranch: string; autoPr: boolean }) => {
+  async ({ prompt, githubRepository, baseBranch, autoPr }: { prompt: string; githubRepository?: string; baseBranch?: string; autoPr: boolean }) => {
     if (!process.env.JULES_API_KEY) {
       return "JULES_API_KEY is missing. Configure it before using this tool.";
     }
 
     try {
       const { jules } = await import("@google/jules-sdk");
-      const run = await jules.run({
+      const runConfig: any = {
         prompt,
-        source: { github: githubRepository, baseBranch },
         requireApproval: false,
         autoPr,
-      });
+      };
+      if (githubRepository) {
+        runConfig.source = { github: githubRepository, baseBranch: baseBranch || "main" };
+      }
+      const run = await jules.run(runConfig);
 
       const progress: string[] = [];
       const planSteps: string[] = [];
@@ -328,6 +331,7 @@ export const julesSessionTool = tool(
 
       const outcome = await run.result();
       const prUrl = outcome.pullRequest?.url || "";
+      const generatedFiles = outcome.generatedFiles ? outcome.generatedFiles().map((f: any) => ({ path: f.path, content: f.content })) : [];
 
       return JSON.stringify(
         {
@@ -338,6 +342,7 @@ export const julesSessionTool = tool(
           changeStats,
           bashLogs: bashLogs.slice(-5),
           pullRequestUrl: prUrl || null,
+          generatedFiles,
           state: outcome.state || null,
         },
         null,
@@ -356,8 +361,8 @@ export const julesSessionTool = tool(
     description: "Launches a Google Jules coding session and returns progress plus the resulting PR URL when available.",
     schema: z.object({
       prompt: z.string().describe("Task prompt sent to Jules."),
-      githubRepository: z.string().describe("GitHub repository in owner/repo format."),
-      baseBranch: z.string().default("main").describe("Base branch for Jules work."),
+      githubRepository: z.string().optional().describe("GitHub repository in owner/repo format."),
+      baseBranch: z.string().optional().describe("Base branch for Jules work."),
       autoPr: z.boolean().default(true).describe("Whether Jules should automatically create a pull request."),
     }),
   }
