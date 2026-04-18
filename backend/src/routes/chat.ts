@@ -2,6 +2,7 @@ import { Router, Request, Response as ExpressResponse } from 'express';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import { getAgent } from '../lib/agent/graph.js';
 import { getStore } from '../lib/githubStore.js';
+import { applyContextBudget, getMaxInputTokensFromEnv } from '../lib/agent/contextBudget.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = Router();
@@ -118,9 +119,20 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
 
     console.log('[chat] streaming start');
 
-    const langchainMessages = messages.map((m) => {
-      if (m?.role === 'assistant') return new AIMessage(String(m?.content ?? ''));
-      return new HumanMessage(String(m?.content ?? ''));
+    const contextBudget = applyContextBudget(messages, {
+      maxInputTokens: getMaxInputTokensFromEnv(),
+    });
+
+    if (contextBudget.wasTrimmed) {
+      console.warn('[chat] context trimmed', {
+        estimatedTokens: contextBudget.estimatedTokens,
+        droppedMessages: contextBudget.droppedMessages,
+      });
+    }
+
+    const langchainMessages = contextBudget.messages.map((m) => {
+      if (m.role === 'assistant') return new AIMessage(m.content);
+      return new HumanMessage(m.content);
     });
 
     const recursionLimit = getGraphRecursionLimit();
