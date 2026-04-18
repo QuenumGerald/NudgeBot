@@ -291,6 +291,10 @@ export const julesSessionTool = tool(
         2
       );
     } catch (e: any) {
+      const errorCode = e?.code;
+      if (errorCode === "ERR_MODULE_NOT_FOUND" || /@google\/jules-sdk/.test(e?.message || "")) {
+        return "Failed to run Jules session: missing dependency @google/jules-sdk. Install backend dependencies with `npm install` in /backend.";
+      }
       return `Failed to run Jules session: ${e.message}`;
     }
   },
