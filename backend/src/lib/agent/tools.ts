@@ -261,6 +261,7 @@ export const julesSessionTool = tool(
 
     try {
       const { jules } = await import("@google/jules-sdk");
+      // Keep the REST-compatible payload shape used by Jules (no requireApproval field).
       const session = await jules.session({
         prompt,
         source: { github: githubRepository, baseBranch },
@@ -268,12 +269,31 @@ export const julesSessionTool = tool(
       });
 
       const progress: string[] = [];
-      for await (const activity of session.stream()) {
-        if (activity.type === "progressUpdated") {
-          progress.push(activity.title || "Progress updated");
-        }
-        if (activity.type === "sessionCompleted" || activity.type === "sessionFailed") {
+      const streamWarmupTimeoutMs = 30000;
+      const streamRetryDelayMs = 1500;
+      const startedAt = Date.now();
+
+      while (true) {
+        try {
+          for await (const activity of session.stream()) {
+            if (activity.type === "progressUpdated") {
+              progress.push(activity.title || "Progress updated");
+            }
+            if (activity.type === "sessionCompleted" || activity.type === "sessionFailed") {
+              break;
+            }
+          }
           break;
+        } catch (streamError: any) {
+          const message = String(streamError?.message || "");
+          const isNotReadyError = /active|not\s+ready|not\s+started|no\s+activities/i.test(message);
+          const stillWithinWarmupWindow = Date.now() - startedAt < streamWarmupTimeoutMs;
+
+          if (!isNotReadyError || !stillWithinWarmupWindow) {
+            throw streamError;
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, streamRetryDelayMs));
         }
       }
 
