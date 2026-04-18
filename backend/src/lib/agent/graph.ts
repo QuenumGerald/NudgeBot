@@ -53,6 +53,9 @@ export const getAgent = async (
   const llm = createLLM(provider, modelName, apiKey);
   const mcpTools = await setupMCP(enabledIntegrations, userId);
   const allTools = [...localTools, ...mcpTools];
+  const toolCatalog = allTools
+    .map((tool: any) => `- ${tool.name}: ${tool.description || "Aucune description."}`)
+    .join("\n");
 
   let toolsEnabled = false;
   let llmWithTools: any = llm;
@@ -87,9 +90,17 @@ Tu travailles selon une architecture **Dual-Repo** :
 - Notes : persistance sur GitHub (Mémoire).
 - Google Jules : déléguer le développement.
   - Quand tu utilises Jules, n'attends pas de réponse intermédiaire côté utilisateur : envoie la requête, laisse la session aller au bout, puis envoie un rapport clair à l'utilisateur (résumé, statut, PR/livrables).
+  - Si l'utilisateur demande quels dépôts/repositories sont disponibles pour Jules, commence par 'list_jules_sources' puis résume les repos exploitables.
+  - Pour Jules, suis cet ordre: (1) 'list_jules_sources' si le repo cible n'est pas clair, (2) 'list_jules_sessions' si l'utilisateur demande l'état/historique, (3) 'run_jules_session' pour exécuter la demande, (4) expliquer clairement le résultat en français.
+  - Si l'utilisateur demande "quels outils tu as ?", réponds avec les noms exacts des outils chargés ci-dessous sans en inventer.
 ${mcpTools.length > 0 ? `- MCP : ${enabledIntegrations.join(", ")} (${mcpTools.length} outils chargés)` : ""}
 
 Utilise les outils de manière proactive. La persistance sur GitHub est ta priorité absolue.
+Quand une demande concerne Jules ou les outils, explique brièvement à quoi sert chaque outil que tu utilises.
+
+### 📚 Catalogue exact des outils chargés (à utiliser pour lister les outils)
+${toolCatalog || "- Aucun outil chargé."}
+
 Réponds en français par défaut.`,
   ];
 
