@@ -265,6 +265,7 @@ export const julesSessionTool = tool(
         prompt,
         source: { github: githubRepository, baseBranch },
         autoPr,
+        requireApproval: false,
       });
 
       const progress: string[] = [];
