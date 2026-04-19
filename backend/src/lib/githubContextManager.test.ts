@@ -29,9 +29,9 @@ describe('GitHubContextManager', () => {
             ok: true,
         } as any);
 
-        const manager = await initGitHubContextManager();
+        await initGitHubContextManager();
+        const manager = getGitHubContextManager();
         expect(manager).toBeDefined();
-        expect(getGitHubContextManager()).toBe(manager);
     });
 
     it('should fall back to other tokens if GITHUB_TOKEN is missing', async () => {
@@ -50,7 +50,8 @@ describe('GitHubContextManager', () => {
             json: async () => ({ login: 'owner' }),
         } as any);
 
-        const manager = await initGitHubContextManager();
+        await initGitHubContextManager();
+        const manager = getGitHubContextManager();
         expect(manager).toBeDefined();
     });
 
@@ -65,7 +66,8 @@ describe('GitHubContextManager', () => {
             },
         });
 
-        const manager = await initGitHubContextManager();
+        await initGitHubContextManager();
+        const manager = getGitHubContextManager();
         expect(manager).toBeNull();
     });
 });
