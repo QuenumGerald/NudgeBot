@@ -5,6 +5,7 @@ import { promises as fs } from "fs";
 import { exec as execCallback } from "child_process";
 import { promisify } from "util";
 import { BlazeJob } from "blazerjob";
+import { sendEmail } from "../mailer.js";
 
 const exec = promisify(execCallback);
 const blazer = new BlazeJob({ concurrency: 16 });
@@ -494,42 +495,19 @@ export const webFetchTool = tool(
 
 export const sendEmailTool = tool(
   async ({ to, subject, body }: { to: string; subject: string; body: string }) => {
-    const apiKey = (process.env.RESEND_API_KEY || "").trim();
-    const fromEmail = (process.env.RESEND_FROM_EMAIL || "").trim();
-
-    if (!apiKey || !fromEmail) {
-      return "Email not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.";
-    }
-
     try {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: fromEmail,
-          to: [to],
-          subject,
-          html: `<div>${body.replace(/\n/g, "<br />")}</div>`,
-          text: body,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.text();
-        return `Failed to send email: ${res.status} ${err}`;
-      }
-
+      await sendEmail({ to, subject, body });
       return `Email sent to ${to} with subject "${subject}".`;
     } catch (e: any) {
+      if (e.message.includes("Email is not configured")) {
+         return "Email not configured. Set SMTP_* or RESEND_* environment variables.";
+      }
       return `Failed to send email: ${e.message}`;
     }
   },
   {
     name: "send_email",
-    description: "Sends an email immediately via Resend. Use for quick notifications, summaries, or reports.",
+    description: "Sends an email immediately. Use for quick notifications, summaries, or reports.",
     schema: z.object({
       to: z.string().describe("Recipient email address."),
       subject: z.string().describe("Email subject line."),

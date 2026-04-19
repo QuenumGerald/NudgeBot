@@ -1,43 +1,10 @@
 import { BlazeJob } from 'blazerjob';
 import { getStore, NotificationRecord } from './githubStore.js';
+import { sendEmail } from './mailer.js';
 
 const jobs = new BlazeJob({ concurrency: 16 });
 const scheduledNotificationIds = new Set<number>();
 let workerStarted = false;
-
-const getResendConfig = () => {
-  const apiKey = (process.env.RESEND_API_KEY || '').trim();
-  const fromEmail = (process.env.RESEND_FROM_EMAIL || '').trim();
-  return { apiKey, fromEmail };
-};
-
-const sendResendEmail = async (notification: NotificationRecord) => {
-  const { apiKey, fromEmail } = getResendConfig();
-
-  if (!apiKey || !fromEmail) {
-    throw new Error('RESEND_API_KEY or RESEND_FROM_EMAIL is not configured');
-  }
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: fromEmail,
-      to: [notification.recipient_email],
-      subject: notification.subject,
-      html: `<div>${notification.body.replace(/\n/g, '<br />')}</div>`,
-      text: notification.body,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Resend API error (${response.status}): ${errorText}`);
-  }
-};
 
 const scheduleNotificationExecution = (notificationId: number, sendAt: Date) => {
   if (scheduledNotificationIds.has(notificationId)) {
@@ -69,7 +36,11 @@ const processNotificationById = async (notificationId: number) => {
   }
 
   try {
-    await sendResendEmail(notification);
+    await sendEmail({
+      to: notification.recipient_email,
+      subject: notification.subject,
+      body: notification.body,
+    });
 
     const nextRunCount = notification.run_count + 1;
     const canRepeat = Boolean(notification.recurrence_interval_minutes)
