@@ -2,6 +2,7 @@ import { BlazeJob } from 'blazerjob';
 import { getStore, NotificationRecord } from './githubStore.js';
 
 const jobs = new BlazeJob({ concurrency: 16 });
+jobs.start();
 const scheduledNotificationIds = new Set<number>();
 let workerStarted = false;
 
