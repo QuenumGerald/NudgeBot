@@ -8,6 +8,7 @@ import { BlazeJob } from "blazerjob";
 
 const exec = promisify(execCallback);
 const blazer = new BlazeJob({ concurrency: 16 });
+blazer.start();
 
 // ── Workspace helpers ─────────────────────────────────────────────────────────
 
@@ -269,87 +270,12 @@ export const julesSessionTool = tool(
       if (githubRepository) {
         runConfig.source = { github: githubRepository, baseBranch: baseBranch || "main" };
       }
+
+      // Launch the session
       const run = await jules.run(runConfig);
 
-      const progress: string[] = [];
-      const planSteps: string[] = [];
-      const agentMessages: string[] = [];
-      const changeStats: Array<{ path: string; additions: number; deletions: number }> = [];
-      const bashLogs: string[] = [];
-      const streamWarmupTimeoutMs = 30000;
-      const streamRetryDelayMs = 1500;
-      const startedAt = Date.now();
-
-      while (true) {
-        try {
-          for await (const activity of run.stream()) {
-            if (activity.type === "progressUpdated") {
-              progress.push(activity.title || "Progress updated");
-            }
-            if (activity.type === "planGenerated") {
-              for (const step of activity.plan.steps) {
-                if (step.title) {
-                  planSteps.push(step.title);
-                }
-              }
-            }
-            if (activity.type === "agentMessaged" && activity.message) {
-              agentMessages.push(activity.message);
-            }
-            for (const artifact of activity.artifacts ?? []) {
-              if (artifact.type === "changeSet") {
-                const parsed = artifact.parsed();
-                for (const file of parsed.files) {
-                  changeStats.push({
-                    path: file.path,
-                    additions: file.additions,
-                    deletions: file.deletions,
-                  });
-                }
-              }
-              if (artifact.type === "bashOutput") {
-                bashLogs.push(artifact.toString());
-              }
-            }
-            if (activity.type === "sessionCompleted" || activity.type === "sessionFailed") {
-              break;
-            }
-          }
-          break;
-        } catch (streamError: any) {
-          const message = String(streamError?.message || "");
-          const isNotReadyError = /active|not\s+ready|not\s+started|no\s+activities/i.test(message);
-          const stillWithinWarmupWindow = Date.now() - startedAt < streamWarmupTimeoutMs;
-
-          if (!isNotReadyError || !stillWithinWarmupWindow) {
-            throw streamError;
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, streamRetryDelayMs));
-        }
-      }
-
-      const outcome = await run.result();
-      const prUrl = outcome.pullRequest?.url || "";
-      const generatedFiles = outcome.generatedFiles
-        ? outcome.generatedFiles().all().map((f: any) => ({ path: f.path, content: f.content }))
-        : [];
-
-      return JSON.stringify(
-        {
-          sessionId: run.id,
-          planSteps,
-          progress,
-          agentMessages: agentMessages.slice(-5),
-          changeStats,
-          bashLogs: bashLogs.slice(-5),
-          pullRequestUrl: prUrl || null,
-          generatedFiles,
-          state: outcome.state || null,
-        },
-        null,
-        2
-      );
+      // Return immediately so the agent doesn't block waiting for Jules to complete
+      return `Jules session launched successfully (fire-and-forget). Session ID: ${run.id}`;
     } catch (e: any) {
       const errorCode = e?.code;
       if (errorCode === "ERR_MODULE_NOT_FOUND" || /@google\/jules-sdk/.test(e?.message || "")) {
@@ -360,7 +286,7 @@ export const julesSessionTool = tool(
   },
   {
     name: "run_jules_session",
-    description: "Launches a Google Jules coding session and returns progress plus the resulting PR URL when available.",
+    description: "Launches a Google Jules coding session in a fire-and-forget manner. Returns the session ID immediately. Does not wait for completion.",
     schema: z.object({
       prompt: z.string().describe("Task prompt sent to Jules."),
       githubRepository: z.string().optional().describe("GitHub repository in owner/repo format."),
