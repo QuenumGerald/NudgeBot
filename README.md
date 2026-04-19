@@ -196,7 +196,7 @@ Each MCP server exposes dozens of tools automatically to the LLM — for example
 
 ---
 
-### 📧 Email notifications (Resend)
+### 📧 Email notifications (SMTP & Resend)
 
 Schedule email notifications via `POST /api/notifications/:userId`:
 
@@ -214,7 +214,7 @@ Schedule email notifications via `POST /api/notifications/:userId`:
 - **One-off**: set `send_at`, omit `recurrence_interval_minutes`
 - **Recurring**: add `recurrence_interval_minutes` (minutes between runs) + optional `max_runs`
 - Worker reconciles pending notifications on startup (survives restarts)
-- Powered by [Resend](https://resend.com)
+- Powered by SMTP (primary) or [Resend](https://resend.com) (fallback)
 
 ---
 
@@ -279,9 +279,16 @@ NUDGEBOT_WORKDIR=./workspace
 # Google Jules
 JULES_API_KEY=
 
-# Email notifications
+# Email notifications (Resend - Fallback)
 RESEND_API_KEY=
 RESEND_FROM_EMAIL=notifications@your-domain.com
+
+# Email notifications (SMTP - Primary)
+SMTP_HOST=
+SMTP_PORT=465
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM_EMAIL=notifications@your-domain.com
 
 # GitHub (Master access)
 GITHUB_TOKEN=                   # Master PAT (repo scope)
