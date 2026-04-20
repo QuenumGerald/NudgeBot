@@ -2,7 +2,7 @@ import { StateGraph, MessagesAnnotation } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
-import { tools as localTools } from "./tools.js";
+import { getTools } from "./tools.js";
 import { setupMCP } from "./mcp.js";
 
 export const createLLM = (provider: string, modelName: string, apiKey: string) => {
@@ -52,6 +52,7 @@ export const getAgent = async (
 
   const llm = createLLM(provider, modelName, apiKey);
   const mcpTools = await setupMCP(enabledIntegrations, userId);
+  const localTools = getTools();
   const allTools = [...localTools, ...mcpTools];
   const toolCatalog = allTools
     .map((tool: any) => `- ${tool.name}: ${tool.description || "Aucune description."}`)

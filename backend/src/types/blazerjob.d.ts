@@ -1,15 +1,35 @@
 declare module "blazerjob" {
   interface ScheduleOptions {
-    runAt?: Date;
+    runAt?: Date | string;
     maxRuns?: number;
+    maxDurationMs?: number;
     interval?: number;
-    onEnd?: () => void;
+    priority?: number;
+    retriesLeft?: number;
+    type?: string;
+    config?: string;
+    webhookUrl?: string;
+    onEnd?: (stats: { runCount: number; errorCount: number }) => void;
+  }
+
+  interface BlazeJobOptions {
+    storage?: "memory" | "sqlite";
+    dbPath?: string;
+    concurrency?: number;
+    autoExit?: boolean;
+    encryptionKey?: string;
+    debug?: boolean;
   }
 
   export class BlazeJob {
-    constructor(options?: { concurrency?: number });
-    schedule(fn: () => Promise<void>, options: ScheduleOptions): void;
-    start(): void;
+    constructor(options?: BlazeJobOptions);
+    schedule(fn: (() => Promise<void>) | null, options: ScheduleOptions): number;
+    start(): Promise<void>;
     stop(): void;
+    getTasks(): any[];
+    deleteTask(taskId: number): void;
   }
+
+  export function startServer(port?: number): Promise<void>;
+  export function stopServer(): Promise<void>;
 }

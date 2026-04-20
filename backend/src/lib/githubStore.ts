@@ -264,6 +264,7 @@ class GitHubStore {
     Object.assign(record, patch);
     this.scheduleSave();
   }
+
 }
 
 // ── Singleton ────────────────────────────────────────────────────────────────

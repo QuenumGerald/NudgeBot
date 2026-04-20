@@ -1,8 +1,6 @@
-import { BlazeJob } from 'blazerjob';
+import { jobs } from './scheduler.js';
 import { getStore, NotificationRecord } from './githubStore.js';
 
-const jobs = new BlazeJob({ concurrency: 16 });
-jobs.start();
 const scheduledNotificationIds = new Set<number>();
 let workerStarted = false;
 
@@ -128,6 +126,8 @@ export const scheduleNotificationJob = async (notificationId: number, sendAt: Da
 export const startNotificationWorker = () => {
   if (workerStarted) return;
   workerStarted = true;
+
+  jobs.start();
 
   jobs.schedule(
     async () => {

@@ -4,11 +4,8 @@ import path from "path";
 import { promises as fs } from "fs";
 import { exec as execCallback } from "child_process";
 import { promisify } from "util";
-import { BlazeJob } from "blazerjob";
 
 const exec = promisify(execCallback);
-const blazer = new BlazeJob({ concurrency: 16 });
-blazer.start();
 
 // ── Workspace helpers ─────────────────────────────────────────────────────────
 
@@ -36,11 +33,6 @@ const resolveSafePath = (requestedPath: string) => {
   return resolvedPath;
 };
 
-// ── Task registry ─────────────────────────────────────────────────────────────
-
-const taskRegistry = new Map<number, { name: string; description: string; createdAt: string }>();
-let nextTaskId = 1;
-
 // ── Tools ─────────────────────────────────────────────────────────────────────
 
 export const createProjectWorkspaceTool = tool(
@@ -64,86 +56,182 @@ export const createProjectWorkspaceTool = tool(
   }
 );
 
-export const scheduleTaskTool = tool(
-  async ({
-    taskName,
-    description,
-    delayMs,
-    intervalMs,
-  }: {
-    taskName: string;
-    description: string;
-    delayMs: number;
-    intervalMs?: number;
-  }) => {
-    try {
-      const id = nextTaskId++;
-      const runAt = new Date(Date.now() + delayMs);
+// ── Scheduling tools ─────────────────────────────────────────────────────────
 
-      const opts: any = {
-        runAt,
-        maxRuns: intervalMs && intervalMs > 0 ? undefined : 1,
-        ...(intervalMs && intervalMs > 0 ? { interval: intervalMs } : {}),
-        onEnd: () => taskRegistry.delete(id),
-      };
+const sendEmail = async (recipientEmail: string, subject: string, body: string) => {
+  const apiKey = (process.env.RESEND_API_KEY || "").trim();
+  const fromEmail = (process.env.RESEND_FROM_EMAIL || "").trim();
+  if (!apiKey || !fromEmail) throw new Error("RESEND_API_KEY or RESEND_FROM_EMAIL not configured");
 
-      blazer.schedule(async () => {
-        console.log(`[task] '${taskName}' fired: ${description}`);
-      }, opts);
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from: fromEmail,
+      to: [recipientEmail],
+      subject,
+      html: `<div>${body.replace(/\n/g, "<br />")}</div>`,
+      text: body,
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Resend API error (${res.status}): ${errText}`);
+  }
+};
 
-      taskRegistry.set(id, { name: taskName, description, createdAt: new Date().toISOString() });
+export const createSchedulingTools = () => {
+  const scheduleTaskTool = tool(
+    async ({
+      taskName,
+      actionType,
+      delayMs,
+      intervalMs,
+      maxRuns,
+      recipientEmail,
+      subject,
+      body,
+      command,
+      url,
+      httpMethod,
+      httpHeaders,
+      httpBody,
+      message,
+    }: {
+      taskName: string;
+      actionType: "email" | "command" | "http" | "log";
+      delayMs: number;
+      intervalMs?: number;
+      maxRuns?: number;
+      recipientEmail?: string;
+      subject?: string;
+      body?: string;
+      command?: string;
+      url?: string;
+      httpMethod?: string;
+      httpHeaders?: string;
+      httpBody?: string;
+      message?: string;
+    }) => {
+      try {
+        const { jobs } = await import("../scheduler.js");
+        const runAt = new Date(Date.now() + delayMs);
 
-      const type = intervalMs && intervalMs > 0
-        ? `recurring every ${intervalMs}ms`
-        : `one-off in ${delayMs}ms`;
+        let taskFn: () => Promise<void>;
+        let scheduleOpts: any = {
+          runAt,
+          ...(intervalMs && intervalMs > 0 ? { interval: intervalMs } : {}),
+          ...(maxRuns ? { maxRuns } : {}),
+        };
 
-      return `Task '${taskName}' (id: ${id}) scheduled (${type}).`;
-    } catch (e: any) {
-      return `Failed to schedule task: ${e.message}`;
+        switch (actionType) {
+          case "email":
+            if (!recipientEmail || !subject || !body) return "Missing recipientEmail, subject, or body for email action.";
+            taskFn = async () => { await sendEmail(recipientEmail, subject, body); };
+            break;
+          case "command":
+            if (!command) return "Missing command for command action.";
+            taskFn = async () => {
+              const { stdout, stderr } = await exec(command, { timeout: 30_000, maxBuffer: 1024 * 1024 });
+              console.log(`[task:command] '${taskName}' output:`, stdout, stderr || "");
+            };
+            break;
+          case "http":
+            if (!url) return "Missing url for http action.";
+            // Use BlazeJob's native HTTP task type
+            taskFn = async () => {};
+            scheduleOpts.type = "http";
+            scheduleOpts.config = JSON.stringify({
+              url,
+              method: httpMethod || "POST",
+              headers: httpHeaders ? JSON.parse(httpHeaders) : { "Content-Type": "application/json" },
+              body: httpBody ? JSON.parse(httpBody) : undefined,
+            });
+            break;
+          case "log":
+            taskFn = async () => { console.log(`[task:log] ${message || taskName}`); };
+            break;
+        }
+
+        const taskId = jobs.schedule(taskFn!, scheduleOpts);
+
+        const type = intervalMs && intervalMs > 0
+          ? `recurring every ${Math.round(intervalMs / 1000)}s (max ${maxRuns ?? "∞"} runs)`
+          : `one-off in ${delayMs}ms`;
+
+        return `Task '${taskName}' scheduled (id: ${taskId}, ${actionType}, ${type}).`;
+      } catch (e: any) {
+        return `Failed to schedule task: ${e.message}`;
+      }
+    },
+    {
+      name: "schedule_task",
+      description:
+        "Schedules a deferred or recurring task. Supports actions: email (Resend), command (shell), http (native BlazeJob HTTP), log. Persisted in SQLite — survives restarts.",
+      schema: z.object({
+        taskName: z.string().describe("Human-readable name for the task."),
+        actionType: z.enum(["email", "command", "http", "log"]).describe("Type of action to perform."),
+        delayMs: z.number().describe("Initial delay in milliseconds before first run."),
+        intervalMs: z.number().optional().describe("If set, repeats every N milliseconds."),
+        maxRuns: z.number().optional().describe("Maximum number of runs for recurring tasks."),
+        recipientEmail: z.string().optional().describe("(email) Recipient email address."),
+        subject: z.string().optional().describe("(email) Email subject line."),
+        body: z.string().optional().describe("(email/log) Email body text or log content."),
+        command: z.string().optional().describe("(command) Shell command to execute."),
+        url: z.string().optional().describe("(http) URL to call."),
+        httpMethod: z.string().optional().describe("(http) HTTP method, default POST."),
+        httpHeaders: z.string().optional().describe("(http) JSON string of headers."),
+        httpBody: z.string().optional().describe("(http) JSON string of request body."),
+        message: z.string().optional().describe("(log) Message to log."),
+      }),
     }
-  },
-  {
-    name: "schedule_task",
-    description: "Schedules a deferred or recurring task via BlazerJob. Useful for reminders, checks, or repeating actions.",
-    schema: z.object({
-      taskName: z.string().describe("The name or identifier of the task."),
-      description: z.string().describe("What the task does when it fires."),
-      delayMs: z.number().describe("Initial delay in milliseconds before first run."),
-      intervalMs: z.number().optional().describe("If set, repeats every N milliseconds after the first run."),
-    }),
-  }
-);
+  );
 
-export const listTasksTool = tool(
-  async () => {
-    if (taskRegistry.size === 0) return "No active tasks.";
-    const lines = [...taskRegistry.entries()].map(
-      ([id, t]) => `#${id} — ${t.name}: ${t.description} (created: ${t.createdAt})`
-    );
-    return lines.join("\n");
-  },
-  {
-    name: "list_tasks",
-    description: "Lists all currently scheduled tasks.",
-    schema: z.object({}),
-  }
-);
+  const listTasksTool = tool(
+    async () => {
+      try {
+        const { jobs } = await import("../scheduler.js");
+        const tasks = jobs.getTasks();
 
-export const cancelTaskTool = tool(
-  async ({ taskId }: { taskId: number }) => {
-    const task = taskRegistry.get(taskId);
-    if (!task) return `Task #${taskId} not found.`;
-    taskRegistry.delete(taskId);
-    return `Task #${taskId} ('${task.name}') removed.`;
-  },
-  {
-    name: "cancel_task",
-    description: "Cancels a scheduled task by its ID.",
-    schema: z.object({
-      taskId: z.number().describe("The task ID to cancel."),
-    }),
-  }
-);
+        if (!tasks || tasks.length === 0) return "No scheduled tasks.";
+
+        const lines = tasks.map((t: any) => {
+          const interval = t.interval ? ` | every ${Math.round(t.interval / 1000)}s` : "";
+          return `#${t.id} — [${t.status}] type: ${t.type || "custom"} | runAt: ${t.runAt}${interval}`;
+        });
+        return lines.join("\n");
+      } catch (e: any) {
+        return `Failed to list tasks: ${e.message}`;
+      }
+    },
+    {
+      name: "list_tasks",
+      description: "Lists all scheduled tasks from BlazeJob (SQLite-persisted).",
+      schema: z.object({}),
+    }
+  );
+
+  const cancelTaskTool = tool(
+    async ({ taskId }: { taskId: number }) => {
+      try {
+        const { jobs } = await import("../scheduler.js");
+        jobs.deleteTask(taskId);
+        return `Task #${taskId} deleted.`;
+      } catch (e: any) {
+        return `Failed to cancel task: ${e.message}`;
+      }
+    },
+    {
+      name: "cancel_task",
+      description: "Deletes a scheduled task by its ID.",
+      schema: z.object({
+        taskId: z.number().describe("The task ID to delete."),
+      }),
+    }
+  );
+
+  return [scheduleTaskTool, listTasksTool, cancelTaskTool];
+};
 
 export const createFileTool = tool(
   async ({ path: filePath, content, mode }: { path: string; content: string; mode: "write" | "append" }) => {
@@ -598,7 +686,7 @@ export const syncToWorkspaceTool = tool(
 
 // ── Export all tools ──────────────────────────────────────────────────────────
 
-export const tools = [
+export const staticTools = [
   // Workspace
   createProjectWorkspaceTool,
   syncToWorkspaceTool,
@@ -609,10 +697,6 @@ export const tools = [
   deleteFileTool,
   // Shell
   executeCommandTool,
-  // Scheduling
-  scheduleTaskTool,
-  listTasksTool,
-  cancelTaskTool,
   // Web
   webFetchTool,
   // Email
@@ -627,4 +711,10 @@ export const tools = [
   listJulesSourcesTool,
   listJulesSessionsTool,
   julesSessionTool,
+];
+
+/** Returns the full tool set including scheduling tools. */
+export const getTools = () => [
+  ...staticTools,
+  ...createSchedulingTools(),
 ];
