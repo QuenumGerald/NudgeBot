@@ -1,4 +1,5 @@
 import { Router, Request, Response as ExpressResponse } from 'express';
+import { createUIMessageStream, pipeUIMessageStreamToResponse } from 'ai';
 import { getAgent } from '../lib/agent/graph.js';
 import { getStore } from '../lib/githubStore.js';
 import { applyContextBudget, getMaxInputTokensFromEnv } from '../lib/agent/contextBudget.js';
@@ -54,15 +55,7 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
     return;
   }
 
-  // Set up SSE headers
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  (res as any).flushHeaders?.();
-
   try {
-    res.write(`data: ${JSON.stringify({ type: 'thinking' })}\n\n`);
-
     // Load user settings from store
     const store = await getStore();
     const userSettings = userId ? store.getSettings(userId) : undefined;
@@ -84,7 +77,8 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
     });
 
     if (!apiKey) {
-      throw new Error('LLM API key not configured');
+      res.status(500).json({ error: 'LLM API key not configured' });
+      return;
     }
 
     // Load previous context from GitHub if available
@@ -97,10 +91,10 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
         if (ctx) {
           const parts: string[] = [];
           if (ctx.summary) parts.push(`Résumé: ${ctx.summary}`);
-          if (ctx.key_decisions?.length) parts.push(`Décisions: ${ctx.key_decisions.map((d: any) => d.text).join("; ")}`);
-          if (ctx.active_topics?.length) parts.push(`Sujets actifs: ${ctx.active_topics.join(", ")}`);
-          if (ctx.next_actions?.length) parts.push(`Actions: ${ctx.next_actions.map((a: any) => a.description).join("; ")}`);
-          if (parts.length) previousContext = parts.join("\n");
+          if (ctx.key_decisions?.length) parts.push(`Décisions: ${ctx.key_decisions.map((d: any) => d.text).join('; ')}`);
+          if (ctx.active_topics?.length) parts.push(`Sujets actifs: ${ctx.active_topics.join(', ')}`);
+          if (ctx.next_actions?.length) parts.push(`Actions: ${ctx.next_actions.map((a: any) => a.description).join('; ')}`);
+          if (parts.length) previousContext = parts.join('\n');
         }
       }
     } catch {
@@ -129,48 +123,85 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
       });
     }
 
-    // Convert to Mastra/AI SDK message format
     const agentMessages = contextBudget.messages.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
 
     const maxSteps = getAgentMaxSteps();
-    const result = await agent.generate(agentMessages, { maxSteps });
 
-    const content = result.text ?? '';
+    const uiStream = createUIMessageStream({
+      execute: async ({ writer }) => {
+        const result = await agent.stream(agentMessages, { maxSteps });
 
-    if (content) {
-      res.write(`data: ${JSON.stringify({ type: 'delta', content })}\n\n`);
-    }
+        // Convert Mastra fullStream chunks to AI SDK UIMessageChunks
+        for await (const chunk of result.fullStream) {
+          switch (chunk.type) {
+            case 'text-start':
+              writer.write({ type: 'text-start', id: chunk.payload.id } as any);
+              break;
+            case 'text-delta':
+              writer.write({ type: 'text-delta', id: chunk.payload.id, delta: chunk.payload.text } as any);
+              break;
+            case 'text-end':
+              writer.write({ type: 'text-end', id: chunk.payload.id } as any);
+              break;
+            case 'tool-call':
+              writer.write({
+                type: 'tool-call',
+                toolCallId: chunk.payload.toolCallId,
+                toolName: chunk.payload.toolName,
+                input: chunk.payload.args ?? {},
+              } as any);
+              break;
+            case 'tool-result':
+              writer.write({
+                type: 'tool-result',
+                toolCallId: chunk.payload.toolCallId,
+                toolName: chunk.payload.toolName,
+                result: chunk.payload.result,
+              } as any);
+              break;
+          }
+        }
 
-    // Save updated context back to GitHub
-    try {
-      const { getGitHubContextManager } = await import('../lib/githubContextManager.js');
-      const mgr = getGitHubContextManager();
-      if (mgr) {
-        const allMessages = [
-          ...agentMessages,
-          { role: 'assistant', content },
-        ].map((m) => ({
-          role: m.role,
-          content: m.content,
-          timestamp: new Date().toISOString(),
-        }));
+        // Save context in background after stream completes
+        result.text
+          .then(async (content) => {
+            try {
+              const { getGitHubContextManager } = await import('../lib/githubContextManager.js');
+              const mgr = getGitHubContextManager();
+              if (mgr) {
+                await mgr.saveUserContext(String(userId ?? ''), {
+                  messages: [
+                    ...agentMessages,
+                    { role: 'assistant', content },
+                  ].map((m) => ({
+                    role: m.role,
+                    content: m.content,
+                    timestamp: new Date().toISOString(),
+                  })),
+                });
+              }
+            } catch (saveError) {
+              console.error('[chat] failed to save context:', saveError);
+            }
+          })
+          .catch(console.error);
+      },
+      onError: (error) => {
+        console.error('[chat] stream error:', error);
+        return error instanceof Error ? error.message : 'Stream Error';
+      },
+    });
 
-        await mgr.saveUserContext(String(userId ?? ''), { messages: allMessages });
-      }
-    } catch (saveError) {
-      console.error('[chat] failed to save context:', saveError);
-    }
-
-    res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
-    res.end();
+    pipeUIMessageStreamToResponse({ response: res, stream: uiStream });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Server Error';
-    console.error('Chat API Error:', error);
-    res.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
-    res.end();
+    console.error('[chat] API Error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: message });
+    }
   }
 });
 
