@@ -1,5 +1,4 @@
 import { Router, Request, Response as ExpressResponse } from 'express';
-import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import { getAgent } from '../lib/agent/graph.js';
 import { getStore } from '../lib/githubStore.js';
 import { applyContextBudget, getMaxInputTokensFromEnv } from '../lib/agent/contextBudget.js';
@@ -25,7 +24,7 @@ const getLLMConfigFromEnv = () => {
   return { provider, model, apiKey };
 };
 
-const getGraphRecursionLimit = (): number => {
+const getAgentMaxSteps = (): number => {
   const rawLimit = (process.env.LANGGRAPH_RECURSION_LIMIT || '').trim();
   const parsedLimit = Number.parseInt(rawLimit, 10);
 
@@ -98,9 +97,9 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
         if (ctx) {
           const parts: string[] = [];
           if (ctx.summary) parts.push(`Résumé: ${ctx.summary}`);
-          if (ctx.key_decisions?.length) parts.push(`Décisions: ${ctx.key_decisions.map(d => d.text).join("; ")}`);
+          if (ctx.key_decisions?.length) parts.push(`Décisions: ${ctx.key_decisions.map((d: any) => d.text).join("; ")}`);
           if (ctx.active_topics?.length) parts.push(`Sujets actifs: ${ctx.active_topics.join(", ")}`);
-          if (ctx.next_actions?.length) parts.push(`Actions: ${ctx.next_actions.map(a => a.description).join("; ")}`);
+          if (ctx.next_actions?.length) parts.push(`Actions: ${ctx.next_actions.map((a: any) => a.description).join("; ")}`);
           if (parts.length) previousContext = parts.join("\n");
         }
       }
@@ -117,7 +116,7 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
       previousContext
     );
 
-    console.log('[chat] streaming start');
+    console.log('[chat] generation start');
 
     const contextBudget = applyContextBudget(messages, {
       maxInputTokens: getMaxInputTokensFromEnv(),
@@ -130,20 +129,16 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
       });
     }
 
-    const langchainMessages = contextBudget.messages.map((m) => {
-      if (m.role === 'assistant') return new AIMessage(m.content);
-      return new HumanMessage(m.content);
-    });
+    // Convert to Mastra/AI SDK message format
+    const agentMessages = contextBudget.messages.map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }));
 
-    const recursionLimit = getGraphRecursionLimit();
-    const result = await agent.invoke(
-      { messages: langchainMessages },
-      { recursionLimit }
-    ) as { messages?: Array<{ content?: unknown }> };
+    const maxSteps = getAgentMaxSteps();
+    const result = await agent.generate(agentMessages, { maxSteps });
 
-    const outMessages = Array.isArray(result?.messages) ? result.messages : [];
-    const last = outMessages[outMessages.length - 1];
-    const content = typeof last?.content === 'string' ? last.content : JSON.stringify(last?.content ?? '');
+    const content = result.text ?? '';
 
     if (content) {
       res.write(`data: ${JSON.stringify({ type: 'delta', content })}\n\n`);
@@ -154,14 +149,13 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
       const { getGitHubContextManager } = await import('../lib/githubContextManager.js');
       const mgr = getGitHubContextManager();
       if (mgr) {
-        // Collect messages for context
         const allMessages = [
-          ...langchainMessages,
-          new AIMessage(content)
-        ].map(m => ({
-          role: m instanceof HumanMessage ? 'user' : 'assistant',
-          content: String(m.content),
-          timestamp: new Date().toISOString()
+          ...agentMessages,
+          { role: 'assistant', content },
+        ].map((m) => ({
+          role: m.role,
+          content: m.content,
+          timestamp: new Date().toISOString(),
         }));
 
         await mgr.saveUserContext(String(userId ?? ''), { messages: allMessages });
