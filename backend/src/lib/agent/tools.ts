@@ -1,4 +1,4 @@
-import { tool } from "@langchain/core/tools";
+import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import path from "path";
 import { promises as fs } from "fs";
@@ -36,8 +36,13 @@ const resolveSafePath = (requestedPath: string) => {
 
 // ── Tools ─────────────────────────────────────────────────────────────────────
 
-export const createProjectWorkspaceTool = tool(
-  async ({ projectName }: { projectName: string }) => {
+export const createProjectWorkspaceTool = createTool({
+  id: "create_project_workspace",
+  description: "Creates (or reuses) a dedicated working subfolder for a project under the NudgeBot workspace.",
+  inputSchema: z.object({
+    projectName: z.string().describe("Project name used to create a normalized subfolder."),
+  }),
+  execute: async ({ projectName }) => {
     try {
       const projectsRoot = getProjectsRoot();
       const normalized = normalizeProjectName(projectName);
@@ -48,14 +53,7 @@ export const createProjectWorkspaceTool = tool(
       return `Failed to create project workspace: ${e.message}`;
     }
   },
-  {
-    name: "create_project_workspace",
-    description: "Creates (or reuses) a dedicated working subfolder for a project under the NudgeBot workspace.",
-    schema: z.object({
-      projectName: z.string().describe("Project name used to create a normalized subfolder."),
-    }),
-  }
-);
+});
 
 // ── Scheduling tools ─────────────────────────────────────────────────────────
 
@@ -82,46 +80,38 @@ const sendEmail = async (recipientEmail: string, subject: string, body: string) 
 };
 
 export const createSchedulingTools = () => {
-  const scheduleTaskTool = tool(
-    async ({
-      taskName,
-      actionType,
-      delayMs,
-      intervalMs,
-      maxRuns,
-      recipientEmail,
-      subject,
-      body,
-      command,
-      url,
-      httpMethod,
-      httpHeaders,
-      httpBody,
-      message,
-    }: {
-      taskName: string;
-      actionType: "email" | "command" | "http" | "log";
-      delayMs: number;
-      intervalMs?: number;
-      maxRuns?: number;
-      recipientEmail?: string;
-      subject?: string;
-      body?: string;
-      command?: string;
-      url?: string;
-      httpMethod?: string;
-      httpHeaders?: string;
-      httpBody?: string;
-      message?: string;
+  const scheduleTaskTool = createTool({
+    id: "schedule_task",
+    description:
+      "Schedules a deferred or recurring task. Supports actions: email (Resend), command (shell), http (native BlazeJob HTTP), log. Persisted in SQLite — survives restarts.",
+    inputSchema: z.object({
+      taskName: z.string().describe("Human-readable name for the task."),
+      actionType: z.enum(["email", "command", "http", "log"]).describe("Type of action to perform."),
+      delayMs: z.number().describe("Initial delay in milliseconds before first run."),
+      intervalMs: z.number().optional().describe("If set, repeats every N milliseconds."),
+      maxRuns: z.number().optional().describe("Maximum number of runs for recurring tasks."),
+      recipientEmail: z.string().optional().describe("(email) Recipient email address."),
+      subject: z.string().optional().describe("(email) Email subject line."),
+      body: z.string().optional().describe("(email/log) Email body text or log content."),
+      command: z.string().optional().describe("(command) Shell command to execute."),
+      url: z.string().optional().describe("(http) URL to call."),
+      httpMethod: z.string().optional().describe("(http) HTTP method, default POST."),
+      httpHeaders: z.string().optional().describe("(http) JSON string of headers."),
+      httpBody: z.string().optional().describe("(http) JSON string of request body."),
+      message: z.string().optional().describe("(log) Message to log."),
+    }),
+    execute: async ({
+      taskName, actionType, delayMs, intervalMs, maxRuns,
+      recipientEmail, subject, body, command, url,
+      httpMethod, httpHeaders, httpBody, message,
     }) => {
       try {
         const runAt = new Date(Date.now() + delayMs);
 
-        // Ensure scheduler worker is running (idempotent with shared singleton)
         jobs.start();
 
         let taskFn: () => Promise<void>;
-        let scheduleOpts: any = {
+        const scheduleOpts: any = {
           runAt,
           ...(intervalMs && intervalMs > 0 ? { interval: intervalMs } : {}),
           ...(maxRuns ? { maxRuns } : {}),
@@ -174,31 +164,13 @@ export const createSchedulingTools = () => {
         return `Failed to schedule task: ${e.message}`;
       }
     },
-    {
-      name: "schedule_task",
-      description:
-        "Schedules a deferred or recurring task. Supports actions: email (Resend), command (shell), http (native BlazeJob HTTP), log. Persisted in SQLite — survives restarts.",
-      schema: z.object({
-        taskName: z.string().describe("Human-readable name for the task."),
-        actionType: z.enum(["email", "command", "http", "log"]).describe("Type of action to perform."),
-        delayMs: z.number().describe("Initial delay in milliseconds before first run."),
-        intervalMs: z.number().optional().describe("If set, repeats every N milliseconds."),
-        maxRuns: z.number().optional().describe("Maximum number of runs for recurring tasks."),
-        recipientEmail: z.string().optional().describe("(email) Recipient email address."),
-        subject: z.string().optional().describe("(email) Email subject line."),
-        body: z.string().optional().describe("(email/log) Email body text or log content."),
-        command: z.string().optional().describe("(command) Shell command to execute."),
-        url: z.string().optional().describe("(http) URL to call."),
-        httpMethod: z.string().optional().describe("(http) HTTP method, default POST."),
-        httpHeaders: z.string().optional().describe("(http) JSON string of headers."),
-        httpBody: z.string().optional().describe("(http) JSON string of request body."),
-        message: z.string().optional().describe("(log) Message to log."),
-      }),
-    }
-  );
+  });
 
-  const listTasksTool = tool(
-    async () => {
+  const listTasksTool = createTool({
+    id: "list_tasks",
+    description: "Lists all scheduled tasks from BlazeJob (SQLite-persisted).",
+    inputSchema: z.object({}),
+    execute: async () => {
       try {
         const tasks = jobs.getTasks();
 
@@ -213,15 +185,15 @@ export const createSchedulingTools = () => {
         return `Failed to list tasks: ${e.message}`;
       }
     },
-    {
-      name: "list_tasks",
-      description: "Lists all scheduled tasks from BlazeJob (SQLite-persisted).",
-      schema: z.object({}),
-    }
-  );
+  });
 
-  const cancelTaskTool = tool(
-    async ({ taskId }: { taskId: number }) => {
+  const cancelTaskTool = createTool({
+    id: "cancel_task",
+    description: "Deletes a scheduled task by its ID.",
+    inputSchema: z.object({
+      taskId: z.number().describe("The task ID to delete."),
+    }),
+    execute: async ({ taskId }) => {
       try {
         jobs.deleteTask(taskId);
         return `Task #${taskId} deleted.`;
@@ -229,20 +201,20 @@ export const createSchedulingTools = () => {
         return `Failed to cancel task: ${e.message}`;
       }
     },
-    {
-      name: "cancel_task",
-      description: "Deletes a scheduled task by its ID.",
-      schema: z.object({
-        taskId: z.number().describe("The task ID to delete."),
-      }),
-    }
-  );
+  });
 
   return [scheduleTaskTool, listTasksTool, cancelTaskTool];
 };
 
-export const createFileTool = tool(
-  async ({ path: filePath, content, mode }: { path: string; content: string; mode: "write" | "append" }) => {
+export const createFileTool = createTool({
+  id: "create_file",
+  description: "Creates a file with the provided content, or appends to it.",
+  inputSchema: z.object({
+    path: z.string().describe("Relative path to the file in the workspace."),
+    content: z.string().describe("Content to write into the file."),
+    mode: z.enum(["write", "append"]).default("write").describe("'write' to replace, 'append' to add."),
+  }),
+  execute: async ({ path: filePath, content, mode }) => {
     try {
       const resolvedPath = resolveSafePath(filePath);
       await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
@@ -255,19 +227,15 @@ export const createFileTool = tool(
       return `Failed to create/update file: ${e.message}`;
     }
   },
-  {
-    name: "create_file",
-    description: "Creates a file with the provided content, or appends to it.",
-    schema: z.object({
-      path: z.string().describe("Relative path to the file in the workspace."),
-      content: z.string().describe("Content to write into the file."),
-      mode: z.enum(["write", "append"]).default("write").describe("'write' to replace, 'append' to add."),
-    }),
-  }
-);
+});
 
-export const readFileTool = tool(
-  async ({ path: filePath }: { path: string }) => {
+export const readFileTool = createTool({
+  id: "read_file",
+  description: "Reads and returns file content.",
+  inputSchema: z.object({
+    path: z.string().describe("Relative path to the file in the workspace."),
+  }),
+  execute: async ({ path: filePath }) => {
     try {
       const resolvedPath = resolveSafePath(filePath);
       const content = await fs.readFile(resolvedPath, "utf8");
@@ -276,17 +244,15 @@ export const readFileTool = tool(
       return `Failed to read file: ${e.message}`;
     }
   },
-  {
-    name: "read_file",
-    description: "Reads and returns file content.",
-    schema: z.object({
-      path: z.string().describe("Relative path to the file in the workspace."),
-    }),
-  }
-);
+});
 
-export const listDirectoryTool = tool(
-  async ({ path: dirPath }: { path: string }) => {
+export const listDirectoryTool = createTool({
+  id: "list_directory",
+  description: "Lists files and folders in a directory.",
+  inputSchema: z.object({
+    path: z.string().default(".").describe("Relative path to the directory."),
+  }),
+  execute: async ({ path: dirPath }) => {
     try {
       const resolvedPath = resolveSafePath(dirPath || ".");
       const items = await fs.readdir(resolvedPath, { withFileTypes: true });
@@ -295,17 +261,15 @@ export const listDirectoryTool = tool(
       return `Failed to list directory: ${e.message}`;
     }
   },
-  {
-    name: "list_directory",
-    description: "Lists files and folders in a directory.",
-    schema: z.object({
-      path: z.string().default(".").describe("Relative path to the directory."),
-    }),
-  }
-);
+});
 
-export const deleteFileTool = tool(
-  async ({ path: filePath }: { path: string }) => {
+export const deleteFileTool = createTool({
+  id: "delete_file",
+  description: "Deletes a file.",
+  inputSchema: z.object({
+    path: z.string().describe("Relative path to the file."),
+  }),
+  execute: async ({ path: filePath }) => {
     try {
       const resolvedPath = resolveSafePath(filePath);
       await fs.unlink(resolvedPath);
@@ -314,17 +278,15 @@ export const deleteFileTool = tool(
       return `Failed to delete file: ${e.message}`;
     }
   },
-  {
-    name: "delete_file",
-    description: "Deletes a file.",
-    schema: z.object({
-      path: z.string().describe("Relative path to the file."),
-    }),
-  }
-);
+});
 
-export const executeCommandTool = tool(
-  async ({ command }: { command: string }) => {
+export const executeCommandTool = createTool({
+  id: "execute_command",
+  description: "Executes a shell command from the workspace and returns output.",
+  inputSchema: z.object({
+    command: z.string().describe("Shell command to execute."),
+  }),
+  execute: async ({ command }) => {
     try {
       const { stdout, stderr } = await exec(command, {
         cwd: process.cwd(),
@@ -341,37 +303,32 @@ export const executeCommandTool = tool(
       return `Failed to execute command: ${e.message}`;
     }
   },
-  {
-    name: "execute_command",
-    description: "Executes a shell command from the workspace and returns output.",
-    schema: z.object({
-      command: z.string().describe("Shell command to execute."),
-    }),
-  }
-);
+});
 
-export const julesSessionTool = tool(
-  async ({ prompt, githubRepository, baseBranch, autoPr }: { prompt: string; githubRepository?: string; baseBranch?: string; autoPr: boolean }) => {
+export const julesSessionTool = createTool({
+  id: "run_jules_session",
+  description: "Launches a Google Jules coding session in a fire-and-forget manner. Returns the session ID immediately. Does not wait for completion.",
+  inputSchema: z.object({
+    prompt: z.string().describe("Task prompt sent to Jules."),
+    githubRepository: z.string().optional().describe("GitHub repository in owner/repo format."),
+    baseBranch: z.string().optional().describe("Base branch for Jules work."),
+    autoPr: z.boolean().default(true).describe("Whether Jules should automatically create a pull request."),
+  }),
+  execute: async ({ prompt, githubRepository, baseBranch, autoPr }) => {
     if (!process.env.JULES_API_KEY) {
       return "JULES_API_KEY is missing. Configure it before using this tool.";
     }
 
     try {
       const { jules } = await import("@google/jules-sdk");
-      const sessionConfig: any = {
-        prompt,
-        autoPr,
-      };
+      const sessionConfig: any = { prompt, autoPr };
 
-      // Minimal call is supported with just a prompt.
-      // If a repository is provided, attach source context expected by the SDK.
       if (githubRepository) {
         sessionConfig.source = { github: githubRepository, baseBranch: baseBranch || "main" };
       }
 
       const session = await jules.session(sessionConfig);
 
-      // Return immediately so the agent doesn't block waiting for completion
       return `Jules session launched successfully (fire-and-forget). Session ID: ${session.id}`;
     } catch (e: any) {
       const errorCode = e?.code;
@@ -381,20 +338,13 @@ export const julesSessionTool = tool(
       return `Failed to run Jules session: ${e.message}`;
     }
   },
-  {
-    name: "run_jules_session",
-    description: "Launches a Google Jules coding session in a fire-and-forget manner. Returns the session ID immediately. Does not wait for completion.",
-    schema: z.object({
-      prompt: z.string().describe("Task prompt sent to Jules."),
-      githubRepository: z.string().optional().describe("GitHub repository in owner/repo format."),
-      baseBranch: z.string().optional().describe("Base branch for Jules work."),
-      autoPr: z.boolean().default(true).describe("Whether Jules should automatically create a pull request."),
-    }),
-  }
-);
+});
 
-export const listJulesSourcesTool = tool(
-  async () => {
+export const listJulesSourcesTool = createTool({
+  id: "list_jules_sources",
+  description: "Lists available Google Jules sources using the Jules REST API.",
+  inputSchema: z.object({}),
+  execute: async () => {
     if (!process.env.JULES_API_KEY) {
       return "JULES_API_KEY is missing. Configure it before using this tool.";
     }
@@ -422,15 +372,16 @@ export const listJulesSourcesTool = tool(
       return `Failed to list Jules sources: ${e.message}`;
     }
   },
-  {
-    name: "list_jules_sources",
-    description: "Lists available Google Jules sources using the Jules REST API.",
-    schema: z.object({}),
-  }
-);
+});
 
-export const listJulesSessionsTool = tool(
-  async ({ pageSize, pageToken }: { pageSize?: number; pageToken?: string }) => {
+export const listJulesSessionsTool = createTool({
+  id: "list_jules_sessions",
+  description: "Lists Google Jules sessions through the Jules REST API.",
+  inputSchema: z.object({
+    pageSize: z.number().int().positive().max(100).optional().describe("Maximum sessions to return (default API behavior applies when omitted)."),
+    pageToken: z.string().optional().describe("Pagination token returned by a previous list request."),
+  }),
+  execute: async ({ pageSize, pageToken }) => {
     if (!process.env.JULES_API_KEY) {
       return "JULES_API_KEY is missing. Configure it before using this tool.";
     }
@@ -463,20 +414,17 @@ export const listJulesSessionsTool = tool(
       return `Failed to list Jules sessions: ${e.message}`;
     }
   },
-  {
-    name: "list_jules_sessions",
-    description: "Lists Google Jules sessions through the Jules REST API.",
-    schema: z.object({
-      pageSize: z.number().int().positive().max(100).optional().describe("Maximum sessions to return (default API behavior applies when omitted)."),
-      pageToken: z.string().optional().describe("Pagination token returned by a previous list request."),
-    }),
-  }
-);
+});
 
 // ── Web / Utility tools ───────────────────────────────────────────────────────
 
-export const webFetchTool = tool(
-  async ({ url }: { url: string }) => {
+export const webFetchTool = createTool({
+  id: "web_fetch",
+  description: "Fetches the content of a URL and returns the text (HTML tags stripped). Useful for reading web pages, APIs, documentation.",
+  inputSchema: z.object({
+    url: z.string().describe("The URL to fetch."),
+  }),
+  execute: async ({ url }) => {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
@@ -495,7 +443,6 @@ export const webFetchTool = tool(
       }
 
       const text = await res.text();
-      // Strip HTML tags for readability
       const cleaned = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
         .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
         .replace(/<[^>]+>/g, " ")
@@ -506,17 +453,17 @@ export const webFetchTool = tool(
       return `Failed to fetch URL: ${e.message}`;
     }
   },
-  {
-    name: "web_fetch",
-    description: "Fetches the content of a URL and returns the text (HTML tags stripped). Useful for reading web pages, APIs, documentation.",
-    schema: z.object({
-      url: z.string().describe("The URL to fetch."),
-    }),
-  }
-);
+});
 
-export const sendEmailTool = tool(
-  async ({ to, subject, body }: { to: string; subject: string; body: string }) => {
+export const sendEmailTool = createTool({
+  id: "send_email",
+  description: "Sends an email immediately via Resend. Use for quick notifications, summaries, or reports.",
+  inputSchema: z.object({
+    to: z.string().describe("Recipient email address."),
+    subject: z.string().describe("Email subject line."),
+    body: z.string().describe("Email body (plain text, newlines supported)."),
+  }),
+  execute: async ({ to, subject, body }) => {
     const apiKey = (process.env.RESEND_API_KEY || "").trim();
     const fromEmail = (process.env.RESEND_FROM_EMAIL || "").trim();
 
@@ -550,19 +497,15 @@ export const sendEmailTool = tool(
       return `Failed to send email: ${e.message}`;
     }
   },
-  {
-    name: "send_email",
-    description: "Sends an email immediately via Resend. Use for quick notifications, summaries, or reports.",
-    schema: z.object({
-      to: z.string().describe("Recipient email address."),
-      subject: z.string().describe("Email subject line."),
-      body: z.string().describe("Email body (plain text, newlines supported)."),
-    }),
-  }
-);
+});
 
-export const getDateTimeTool = tool(
-  async ({ timezone }: { timezone?: string }) => {
+export const getDateTimeTool = createTool({
+  id: "get_date_time",
+  description: "Returns the current date and time, optionally in a specific timezone.",
+  inputSchema: z.object({
+    timezone: z.string().optional().describe("IANA timezone (e.g. 'Europe/Paris', 'America/New_York'). Defaults to server timezone."),
+  }),
+  execute: async ({ timezone }) => {
     try {
       const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
       const now = new Date();
@@ -572,17 +515,16 @@ export const getDateTimeTool = tool(
       return `Failed to get date/time: ${e.message}`;
     }
   },
-  {
-    name: "get_date_time",
-    description: "Returns the current date and time, optionally in a specific timezone.",
-    schema: z.object({
-      timezone: z.string().optional().describe("IANA timezone (e.g. 'Europe/Paris', 'America/New_York'). Defaults to server timezone."),
-    }),
-  }
-);
+});
 
-export const saveNoteTool = tool(
-  async ({ title, content }: { title: string; content: string }) => {
+export const saveNoteTool = createTool({
+  id: "save_note",
+  description: "Saves a note to the GitHub context repo. Useful for remembering things across sessions.",
+  inputSchema: z.object({
+    title: z.string().describe("Note title (used as filename)."),
+    content: z.string().describe("Note content in markdown."),
+  }),
+  execute: async ({ title, content }) => {
     try {
       const { getGitHubContextManager } = await import("../githubContextManager.js");
       const mgr = getGitHubContextManager();
@@ -598,18 +540,13 @@ export const saveNoteTool = tool(
       return `Failed to save note: ${e.message}`;
     }
   },
-  {
-    name: "save_note",
-    description: "Saves a note to the GitHub context repo. Useful for remembering things across sessions.",
-    schema: z.object({
-      title: z.string().describe("Note title (used as filename)."),
-      content: z.string().describe("Note content in markdown."),
-    }),
-  }
-);
+});
 
-export const listNotesTool = tool(
-  async () => {
+export const listNotesTool = createTool({
+  id: "list_notes",
+  description: "Lists all notes saved in the GitHub context repo.",
+  inputSchema: z.object({}),
+  execute: async () => {
     try {
       const { getGitHubContextManager } = await import("../githubContextManager.js");
       const mgr = getGitHubContextManager();
@@ -630,15 +567,15 @@ export const listNotesTool = tool(
       return `Failed to list notes: ${e.message}`;
     }
   },
-  {
-    name: "list_notes",
-    description: "Lists all notes saved in the GitHub context repo.",
-    schema: z.object({}),
-  }
-);
+});
 
-export const readNoteTool = tool(
-  async ({ title }: { title: string }) => {
+export const readNoteTool = createTool({
+  id: "read_note",
+  description: "Reads a note from the GitHub context repo by title.",
+  inputSchema: z.object({
+    title: z.string().describe("Note title to read."),
+  }),
+  execute: async ({ title }) => {
     try {
       const { getGitHubContextManager } = await import("../githubContextManager.js");
       const mgr = getGitHubContextManager();
@@ -658,17 +595,16 @@ export const readNoteTool = tool(
       return `Failed to read note: ${e.message}`;
     }
   },
-  {
-    name: "read_note",
-    description: "Reads a note from the GitHub context repo by title.",
-    schema: z.object({
-      title: z.string().describe("Note title to read."),
-    }),
-  }
-);
+});
 
-export const syncToWorkspaceTool = tool(
-  async ({ filePath, message }: { filePath: string; message?: string }) => {
+export const syncToWorkspaceTool = createTool({
+  id: "sync_to_workspace",
+  description: "Syncs a local file from the workspace to the dedicated GitHub workspace repository for permanent storage.",
+  inputSchema: z.object({
+    filePath: z.string().describe("Relative path to the file in the local workspace."),
+    message: z.string().optional().describe("Optional commit message."),
+  }),
+  execute: async ({ filePath, message }) => {
     try {
       const { getGitHubWorkspaceManager } = await import("../githubContextManager.js");
       const mgr = getGitHubWorkspaceManager();
@@ -683,15 +619,7 @@ export const syncToWorkspaceTool = tool(
       return `Error during sync: ${e.message}`;
     }
   },
-  {
-    name: "sync_to_workspace",
-    description: "Syncs a local file from the workspace to the dedicated GitHub workspace repository for permanent storage.",
-    schema: z.object({
-      filePath: z.string().describe("Relative path to the file in the local workspace."),
-      message: z.string().optional().describe("Optional commit message."),
-    }),
-  }
-);
+});
 
 // ── Export all tools ──────────────────────────────────────────────────────────
 

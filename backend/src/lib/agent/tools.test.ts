@@ -28,7 +28,7 @@ describe('Agent Tools', () => {
 
     describe('create_project_workspace', () => {
         it('should create a directory for the project', async () => {
-            const result = await createProjectWorkspaceTool.invoke({ projectName: 'Test-Proj' });
+            const result = await createProjectWorkspaceTool.execute!({ projectName: 'Test-Proj' } as any);
             expect(result).toContain('Project workspace ready');
             expect(fs.mkdir).toHaveBeenCalledWith(
                 expect.stringContaining(path.join('projects', 'test-proj')),
@@ -37,12 +37,9 @@ describe('Agent Tools', () => {
         });
     });
 
-    describe('julesSessionTool', () => {
-        it('should validate schema with missing optional fields', async () => {
-            // We just test the schema validation here to ensure we don't throw ZodError
-            // We can't fully mock @google/jules-sdk easily for vitest in the same file
-            // without affecting other tests if any, but we can check if schema accepts it
-            const parsed = julesSessionTool.schema.safeParse({
+    describe('run_jules_session', () => {
+        it('should validate schema with missing optional fields', () => {
+            const parsed = julesSessionTool.inputSchema.safeParse({
                 prompt: 'Hello world',
                 autoPr: false
             });
@@ -54,19 +51,19 @@ describe('Agent Tools', () => {
         });
     });
 
-    describe('listJulesSourcesTool', () => {
+    describe('list_jules_sources', () => {
         it('should require JULES_API_KEY when missing', async () => {
             const original = process.env.JULES_API_KEY;
             delete process.env.JULES_API_KEY;
-            const result = await listJulesSourcesTool.invoke({});
+            const result = await listJulesSourcesTool.execute!({} as any);
             expect(result).toContain('JULES_API_KEY is missing');
             if (original) process.env.JULES_API_KEY = original;
         });
     });
 
-    describe('listJulesSessionsTool', () => {
+    describe('list_jules_sessions', () => {
         it('should validate schema with optional pagination fields', () => {
-            const parsed = listJulesSessionsTool.schema.safeParse({
+            const parsed = listJulesSessionsTool.inputSchema.safeParse({
                 pageSize: 5,
                 pageToken: 'abc123'
             });
