@@ -4,6 +4,7 @@ import path from "path";
 import { promises as fs } from "fs";
 import { exec as execCallback } from "child_process";
 import { promisify } from "util";
+import { jobs } from "../scheduler.js";
 
 const exec = promisify(execCallback);
 
@@ -114,8 +115,10 @@ export const createSchedulingTools = () => {
       message?: string;
     }) => {
       try {
-        const { jobs } = await import("../scheduler.js");
         const runAt = new Date(Date.now() + delayMs);
+
+        // Ensure scheduler worker is running (idempotent with shared singleton)
+        jobs.start();
 
         let taskFn: () => Promise<void>;
         let scheduleOpts: any = {
@@ -138,15 +141,22 @@ export const createSchedulingTools = () => {
             break;
           case "http":
             if (!url) return "Missing url for http action.";
-            // Use BlazeJob's native HTTP task type
-            taskFn = async () => {};
-            scheduleOpts.type = "http";
-            scheduleOpts.config = JSON.stringify({
-              url,
-              method: httpMethod || "POST",
-              headers: httpHeaders ? JSON.parse(httpHeaders) : { "Content-Type": "application/json" },
-              body: httpBody ? JSON.parse(httpBody) : undefined,
-            });
+            taskFn = async () => {
+              const method = (httpMethod || "POST").toUpperCase();
+              const headers = httpHeaders ? JSON.parse(httpHeaders) : { "Content-Type": "application/json" };
+              const parsedBody = httpBody ? JSON.parse(httpBody) : undefined;
+
+              const res = await fetch(url, {
+                method,
+                headers,
+                body: parsedBody == null ? undefined : (typeof parsedBody === "string" ? parsedBody : JSON.stringify(parsedBody)),
+              });
+
+              if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`HTTP task failed (${res.status}): ${errText}`);
+              }
+            };
             break;
           case "log":
             taskFn = async () => { console.log(`[task:log] ${message || taskName}`); };
@@ -190,7 +200,6 @@ export const createSchedulingTools = () => {
   const listTasksTool = tool(
     async () => {
       try {
-        const { jobs } = await import("../scheduler.js");
         const tasks = jobs.getTasks();
 
         if (!tasks || tasks.length === 0) return "No scheduled tasks.";
@@ -214,7 +223,6 @@ export const createSchedulingTools = () => {
   const cancelTaskTool = tool(
     async ({ taskId }: { taskId: number }) => {
       try {
-        const { jobs } = await import("../scheduler.js");
         jobs.deleteTask(taskId);
         return `Task #${taskId} deleted.`;
       } catch (e: any) {
@@ -350,20 +358,21 @@ export const julesSessionTool = tool(
 
     try {
       const { jules } = await import("@google/jules-sdk");
-      const runConfig: any = {
+      const sessionConfig: any = {
         prompt,
-        requireApproval: false,
         autoPr,
       };
+
+      // Minimal call is supported with just a prompt.
+      // If a repository is provided, attach source context expected by the SDK.
       if (githubRepository) {
-        runConfig.source = { github: githubRepository, baseBranch: baseBranch || "main" };
+        sessionConfig.source = { github: githubRepository, baseBranch: baseBranch || "main" };
       }
 
-      // Launch the session
-      const run = await jules.run(runConfig);
+      const session = await jules.session(sessionConfig);
 
-      // Return immediately so the agent doesn't block waiting for Jules to complete
-      return `Jules session launched successfully (fire-and-forget). Session ID: ${run.id}`;
+      // Return immediately so the agent doesn't block waiting for completion
+      return `Jules session launched successfully (fire-and-forget). Session ID: ${session.id}`;
     } catch (e: any) {
       const errorCode = e?.code;
       if (errorCode === "ERR_MODULE_NOT_FOUND" || /@google\/jules-sdk/.test(e?.message || "")) {
