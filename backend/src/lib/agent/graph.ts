@@ -15,7 +15,10 @@ export const createModel = (provider: string, modelName: string, apiKey: string)
 
   if (provider === "deepseek") {
     const rawBaseUrl = (process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").trim();
-    const baseURL = rawBaseUrl.replace(/\/+$/, "");
+    const normalizedBaseUrl = rawBaseUrl.replace(/\/+$/, "");
+    const baseURL = /\/v\d+$/i.test(normalizedBaseUrl)
+      ? normalizedBaseUrl
+      : `${normalizedBaseUrl}/v1`;
     const client = createOpenAI({
       name: "deepseek",
       apiKey,
@@ -25,7 +28,7 @@ export const createModel = (provider: string, modelName: string, apiKey: string)
   }
 
   const client = createOpenAI({ apiKey });
-  return client(modelName || "gpt-3.5-turbo");
+  return client(modelName || "gpt-4o-mini");
 };
 
 // Keep createLLM as alias for backwards compatibility within the module
