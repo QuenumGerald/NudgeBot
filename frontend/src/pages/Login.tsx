@@ -21,10 +21,9 @@ export default function Login() {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleLogin();
-    }
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void handleLogin();
   };
 
   return (
@@ -37,7 +36,7 @@ export default function Login() {
 
         {error && <div className="text-destructive text-sm text-center">{error}</div>}
 
-        <div className="space-y-4" onKeyDown={handleKeyDown}>
+        <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">Password</label>
             <Input
@@ -47,10 +46,10 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-          <Button className="w-full mt-4" onClick={handleLogin}>
+          <Button className="w-full mt-4" type="submit">
             Sign In
           </Button>
-        </div>
+        </form>
       </div>
     </div>
   );
