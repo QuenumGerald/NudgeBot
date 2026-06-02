@@ -409,7 +409,7 @@ export default function Home() {
           <div className="max-w-3xl mx-auto relative flex items-end shadow-sm border border-border rounded-xl bg-card focus-within:ring-1 focus-within:ring-primary transition-shadow">
             <Textarea
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Message NudgeBot..."
               className="border-0 focus-visible:ring-0 resize-none min-h-[56px] max-h-48 py-4 px-4 bg-transparent shadow-none"

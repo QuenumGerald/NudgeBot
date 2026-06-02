@@ -343,14 +343,22 @@ export const julesSessionTool = createTool({
 export const listJulesSourcesTool = createTool({
   id: "list_jules_sources",
   description: "Lists available Google Jules sources using the Jules REST API.",
-  inputSchema: z.object({}),
-  execute: async () => {
+  inputSchema: z.object({
+    pageSize: z.number().int().positive().max(100).optional().describe("Maximum sources to return (default API behavior applies when omitted)."),
+    pageToken: z.string().optional().describe("Pagination token returned by a previous list request."),
+  }),
+  execute: async ({ pageSize, pageToken }) => {
     if (!process.env.JULES_API_KEY) {
       return "JULES_API_KEY is missing. Configure it before using this tool.";
     }
 
     try {
-      const res = await fetch("https://jules.googleapis.com/v1alpha/sources", {
+      const qs = new URLSearchParams();
+      if (typeof pageSize === "number") qs.set("pageSize", String(pageSize));
+      if (pageToken) qs.set("pageToken", pageToken);
+
+      const endpoint = `https://jules.googleapis.com/v1alpha/sources${qs.size ? `?${qs.toString()}` : ""}`;
+      const res = await fetch(endpoint, {
         headers: {
           "x-goog-api-key": process.env.JULES_API_KEY,
           Accept: "application/json",
@@ -517,6 +525,9 @@ export const getDateTimeTool = createTool({
   },
 });
 
+// Local in-memory cache for notes to prevent propagation delay or rate limits from GitHub API
+const notesCache = new Map<string, { content: string; timestamp: number }>();
+
 export const saveNoteTool = createTool({
   id: "save_note",
   description: "Saves a note to the GitHub context repo. Useful for remembering things across sessions.",
@@ -534,8 +545,14 @@ export const saveNoteTool = createTool({
       const filePath = `notes/${slug}.md`;
       const markdown = `# ${title}\n\n_Saved: ${new Date().toISOString()}_\n\n${content}`;
 
+      // Update cache immediately so it's readable right away
+      notesCache.set(slug, {
+        content: markdown,
+        timestamp: Date.now(),
+      });
+
       const ok = await (mgr as any).putFile(filePath, markdown, `Save note: ${title}`);
-      return ok ? `Note "${title}" saved to GitHub (${filePath}).` : `Failed to save note to GitHub.`;
+      return ok ? `Note "${title}" saved to GitHub (${filePath}).` : `Note "${title}" saved locally only (failed to sync to GitHub).`;
     } catch (e: any) {
       return `Failed to save note: ${e.message}`;
     }
@@ -555,14 +572,32 @@ export const listNotesTool = createTool({
       const baseUrl = (mgr as any).baseUrl as string;
       const headers = (mgr as any).headers as Record<string, string>;
 
-      const res = await fetch(`${baseUrl}/contents/notes`, { headers });
-      if (res.status === 404) return "No notes saved yet.";
-      if (!res.ok) return `Failed to list notes: ${res.status}`;
+      let githubFiles: Array<{ name: string; size: number }> = [];
+      try {
+        const res = await fetch(`${baseUrl}/contents/notes`, { headers });
+        if (res.ok) {
+          githubFiles = (await res.json()) as Array<{ name: string; size: number }>;
+        }
+      } catch (e) {
+        // ignore list fetch error, fallback to cache
+      }
 
-      const files = (await res.json()) as Array<{ name: string; size: number }>;
-      if (files.length === 0) return "No notes saved yet.";
+      const fileNames = new Set(githubFiles.map((f) => f.name));
+      const mergedFiles = [...githubFiles];
 
-      return files.map((f) => `- ${f.name} (${f.size} bytes)`).join("\n");
+      for (const [slug, item] of notesCache.entries()) {
+        const filename = `${slug}.md`;
+        if (!fileNames.has(filename)) {
+          mergedFiles.push({
+            name: filename,
+            size: Buffer.byteLength(item.content, "utf8"),
+          });
+        }
+      }
+
+      if (mergedFiles.length === 0) return "No notes saved yet.";
+
+      return mergedFiles.map((f) => `- ${f.name} (${f.size} bytes)`).join("\n");
     } catch (e: any) {
       return `Failed to list notes: ${e.message}`;
     }
@@ -582,6 +617,13 @@ export const readNoteTool = createTool({
       if (!mgr) return "GitHub context not configured.";
 
       const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+      // Check cache first to bypass propagation lag
+      const cached = notesCache.get(slug);
+      if (cached) {
+        return cached.content;
+      }
+
       const baseUrl = (mgr as any).baseUrl as string;
       const headers = (mgr as any).headers as Record<string, string>;
 
@@ -590,7 +632,15 @@ export const readNoteTool = createTool({
       if (!res.ok) return `Failed to read note: ${res.status}`;
 
       const data = (await res.json()) as { content: string };
-      return Buffer.from(data.content, "base64").toString("utf-8");
+      const content = Buffer.from(data.content, "base64").toString("utf-8");
+
+      // Save to cache for subsequent reads
+      notesCache.set(slug, {
+        content,
+        timestamp: Date.now(),
+      });
+
+      return content;
     } catch (e: any) {
       return `Failed to read note: ${e.message}`;
     }

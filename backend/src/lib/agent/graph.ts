@@ -10,7 +10,7 @@ export const createModel = (provider: string, modelName: string, apiKey: string)
       apiKey,
       baseURL: "https://openrouter.ai/api/v1",
     });
-    return client(modelName || "deepseek/deepseek-chat:free");
+    return client.chat(modelName || "deepseek/deepseek-chat:free");
   }
 
   if (provider === "deepseek") {
@@ -24,11 +24,11 @@ export const createModel = (provider: string, modelName: string, apiKey: string)
       apiKey,
       baseURL,
     });
-    return client(modelName || "deepseek-chat");
+    return client.chat(modelName || "deepseek-chat");
   }
 
   const client = createOpenAI({ apiKey });
-  return client(modelName || "gpt-4o-mini");
+  return client.chat(modelName || "gpt-4o-mini");
 };
 
 // Keep createLLM as alias for backwards compatibility within the module
