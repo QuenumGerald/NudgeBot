@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Brain, LogOut, Settings as SettingsIcon, Send, Moon, Sun, Wrench, X, Zap, Mic, Copy, Check } from 'lucide-react';
+import { Brain, LogOut, Settings as SettingsIcon, Send, Moon, Sun, Wrench, X, Zap, Mic, Copy, Check, Menu, Plus } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -128,6 +128,7 @@ export default function Home() {
   const [isRequestInFlight, setIsRequestInFlight] = useState(false);
   const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[]>([]);
   const recognitionRef = useRef<any>(null);
@@ -416,6 +417,63 @@ export default function Home() {
 
   return (
     <div className="flex h-screen bg-background">
+      {/* Mobile Drawer Overlay */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+          
+          {/* Drawer content */}
+          <div className="relative flex w-64 max-w-xs flex-1 flex-col bg-card border-r border-border p-4 animate-in slide-in-from-left duration-200">
+            {/* Close button */}
+            <div className="flex items-center justify-between pb-4 border-b border-border mb-4">
+              <div className="flex items-center space-x-2">
+                <img src="/logo.png" alt="NudgeBot" className="w-8 h-8" />
+                <span className="font-bold text-lg text-foreground">NudgeBot</span>
+              </div>
+              <Button variant="ghost" size="icon-sm" onClick={() => setIsMobileMenuOpen(false)} aria-label="Close menu">
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              <div className="text-sm text-muted-foreground mb-4">Chat History</div>
+              <div
+                className="p-2 hover:bg-muted rounded-md cursor-pointer text-sm truncate transition-colors"
+                onClick={() => {
+                  handleNewConversation();
+                  setIsMobileMenuOpen(false);
+                }}
+              >
+                New Conversation
+              </div>
+            </div>
+
+            <div className="mt-auto border-t border-border pt-4 space-y-2">
+              <Button variant="ghost" className="w-full justify-start" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+                {theme === 'dark' ? <Sun className="w-4 h-4 mr-2" /> : <Moon className="w-4 h-4 mr-2" />}
+                Toggle Theme
+              </Button>
+              <Button variant="ghost" className="w-full justify-start" onClick={() => {
+                navigate('/settings');
+                setIsMobileMenuOpen(false);
+              }}>
+                <SettingsIcon className="w-4 h-4 mr-2" />
+                Settings
+              </Button>
+              <Button variant="ghost" className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleLogout}>
+                <LogOut className="w-4 h-4 mr-2" />
+                Logout
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sidebar for Desktop */}
       <div className="w-64 border-r border-border bg-card flex flex-col hidden md:flex">
         <div className="p-4 border-b border-border flex items-center space-x-2">
           <img src="/logo.png" alt="NudgeBot" className="w-8 h-8" />
@@ -449,24 +507,22 @@ export default function Home() {
       </div>
 
       <div className="flex-1 flex flex-col relative max-w-full">
-        <div className="md:hidden border-b border-border bg-card px-3 py-2">
+        {/* Mobile Top Bar */}
+        <div className="md:hidden border-b border-border bg-card px-3 py-2 shadow-xs">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon-sm" onClick={() => setIsMobileMenuOpen(true)} aria-label="Open menu">
+                <Menu className="w-5 h-5 text-foreground" />
+              </Button>
               <img src="/logo.png" alt="NudgeBot" className="w-7 h-7" />
               <span className="font-semibold text-foreground">NudgeBot</span>
             </div>
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon-sm" onClick={handleNewConversation} aria-label="New conversation">
-                <Wrench className="w-4 h-4" />
+            <div className="flex items-center gap-1.5">
+              <Button variant="ghost" size="icon-sm" onClick={handleNewConversation} aria-label="New conversation" title="Nouvelle discussion">
+                <Plus className="w-4 h-4 text-foreground" />
               </Button>
-              <Button variant="ghost" size="icon-sm" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Toggle theme">
-                {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              </Button>
-              <Button variant="ghost" size="icon-sm" onClick={() => navigate('/settings')} aria-label="Settings">
-                <SettingsIcon className="w-4 h-4" />
-              </Button>
-              <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleLogout} aria-label="Logout">
-                <LogOut className="w-4 h-4" />
+              <Button variant="ghost" size="icon-sm" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Toggle theme" title="Changer le thème">
+                {theme === 'dark' ? <Sun className="w-4 h-4 text-foreground" /> : <Moon className="w-4 h-4 text-foreground" />}
               </Button>
             </div>
           </div>
