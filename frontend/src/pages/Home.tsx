@@ -82,10 +82,11 @@ const MarkdownRenderer = ({ content }: { content: string }) => {
             p: ({node, ...props}) => <p className="whitespace-pre-wrap" {...props} />,
             li: ({node, ...props}) => <li className="whitespace-pre-wrap" {...props} />,
             code: CodeBlock as any,
-            table: ({node, ...props}) => <div className="overflow-x-auto my-4 border border-border rounded-lg"><table className="min-w-full divide-y divide-border" {...props} /></div>,
+            table: ({node, ...props}) => <div className="overflow-x-auto w-full max-w-full my-4 border border-border rounded-lg bg-card"><table className="min-w-full divide-y divide-border" {...props} /></div>,
             thead: ({node, ...props}) => <thead className="bg-muted" {...props} />,
-            th: ({node, ...props}) => <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider" {...props} />,
-            td: ({node, ...props}) => <td className="px-4 py-2 text-sm whitespace-nowrap border-t border-border" {...props} />,
+            tr: ({node, ...props}) => <tr className="even:bg-muted/50" {...props} />,
+            th: ({node, ...props}) => <th className="px-2 md:px-3 py-1 md:py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap" {...props} />,
+            td: ({node, ...props}) => <td className="px-2 md:px-3 py-1 md:py-2 text-sm whitespace-nowrap border-t border-border" {...props} />,
             ul: ({node, ...props}) => <ul className="list-disc pl-6 my-4 space-y-1" {...props} />,
             ol: ({node, ...props}) => <ol className="list-decimal pl-6 my-4 space-y-1" {...props} />,
             hr: ({node, ...props}) => <hr className="my-6 border-t-2 border-border/50" {...props} />,
@@ -572,11 +573,11 @@ export default function Home() {
                 )}
 
                 {msg.content && (
-                  <div className={`max-w-[90%] md:max-w-3xl p-4 rounded-xl shadow-sm ${msg.role === 'user'
+                  <div className={`max-w-[90%] md:max-w-3xl p-4 rounded-xl shadow-sm overflow-hidden ${msg.role === 'user'
                     ? 'bg-primary text-primary-foreground rounded-br-none whitespace-pre-wrap'
                     : 'bg-card border border-border text-foreground rounded-bl-none'
                     }`}>
-                    <div className={`prose dark:prose-invert max-w-none text-sm break-words ${
+                    <div className={`prose dark:prose-invert max-w-none text-sm break-words overflow-x-auto w-full ${
                       msg.role === 'user'
                         ? 'prose-p:text-primary-foreground prose-headings:text-primary-foreground prose-strong:text-primary-foreground whitespace-pre-wrap'
                         : 'prose-p:text-foreground/90 prose-headings:text-foreground prose-strong:text-foreground prose-li:text-foreground/90 prose-td:text-foreground/90'
