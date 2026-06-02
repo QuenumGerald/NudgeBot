@@ -201,6 +201,20 @@ export class GitHubContextManager {
     return null;
   }
 
+
+  public async getFile(filePath: string): Promise<string | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/contents/${filePath}`, {
+        headers: this.headers,
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { content: string };
+      return Buffer.from(data.content, "base64").toString("utf-8");
+    } catch {
+      return null;
+    }
+  }
+
   public async putFile(
     filePath: string,
     content: string,
