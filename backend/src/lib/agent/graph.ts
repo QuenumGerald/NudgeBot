@@ -64,6 +64,9 @@ export const getAgent = async (
   const systemParts = [
     `Tu es NudgeBot, un assistant IA personnel polyvalent et compétent.
 
+Tu es orchestré sous le capot par le framework d'agents **Mastra** (\`@mastra/core\`) et connecté au modèle de langage via **Vercel AI SDK** en TypeScript.
+L'application frontend utilise **React (Vite)** et le backend tourne sous **Node.js (Express)**.
+
 Tu peux aider sur TOUS les sujets : questions générales, programmation, rédaction, analyse, brainstorming, math, science, conseil, et bien plus.
 
 ### 📁 Gestion de l'espace de travail (CRITIQUE)

@@ -25,7 +25,7 @@ const getLLMConfigFromEnv = () => {
 };
 
 const getAgentMaxSteps = (): number => {
-  const rawLimit = (process.env.LANGGRAPH_RECURSION_LIMIT || '').trim();
+  const rawLimit = (process.env.MASTRA_RECURSION_LIMIT || process.env.LANGGRAPH_RECURSION_LIMIT || '').trim();
   const parsedLimit = Number.parseInt(rawLimit, 10);
 
   if (!Number.isFinite(parsedLimit) || parsedLimit < 1) {
