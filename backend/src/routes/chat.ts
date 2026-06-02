@@ -4,8 +4,14 @@ import { getStore } from '../lib/githubStore.js';
 import { applyContextBudget, getMaxInputTokensFromEnv } from '../lib/agent/contextBudget.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { toWellFormedUnicode } from '../lib/githubContextManager.js';
+import fs from 'fs/promises';
+import path from 'path';
 
 const router = Router();
+
+const getLocalHistoryPath = (userId: string) => {
+  return path.join(process.cwd(), 'workspace', `history_${userId}.json`);
+};
 
 const getLLMConfigFromEnv = () => {
   const provider = (process.env.LLM_PROVIDER || 'deepseek').trim();
@@ -49,15 +55,28 @@ router.get('/history', async (req: AuthenticatedRequest, res: ExpressResponse) =
   }
 
   try {
-    const { getGitHubContextManager } = await import('../lib/githubContextManager.js');
-    const mgr = getGitHubContextManager();
-    if (!mgr) {
-      res.status(500).json({ error: 'GitHub context not configured' });
-      return;
+    const localPath = getLocalHistoryPath(String(userId));
+    let messagesJson: string | null = null;
+    try {
+      messagesJson = await fs.readFile(localPath, 'utf-8');
+    } catch {
+      // Fallback: check GitHub messages.json once to migrate
+      const { getGitHubContextManager } = await import('../lib/githubContextManager.js');
+      const mgr = getGitHubContextManager();
+      if (mgr) {
+        messagesJson = await mgr.getFile(`users/${userId}/messages.json`);
+        if (messagesJson) {
+          // Save locally so we don't hit GitHub again
+          try {
+            await fs.mkdir(path.dirname(localPath), { recursive: true });
+            await fs.writeFile(localPath, messagesJson, 'utf-8');
+          } catch (writeErr) {
+            console.error('[chat] failed to save migrated history locally:', writeErr);
+          }
+        }
+      }
     }
 
-    const ctx = await mgr.loadUserContext(String(userId));
-    const messagesJson = await mgr.getFile(`users/${userId}/messages.json`);
     if (messagesJson) {
       res.json({ messages: JSON.parse(messagesJson) });
     } else {
@@ -196,22 +215,27 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
       }
     }
 
-    // Save updated context back to GitHub
+    // Save updated context back to GitHub & locally
     try {
+      const localPath = getLocalHistoryPath(String(userId ?? ''));
+      const allMessages = [
+        ...agentMessages,
+        { role: 'assistant', content: toWellFormedUnicode(content) },
+      ].map((m) => ({
+        role: m.role,
+        content: m.content,
+        timestamp: new Date().toISOString(),
+      }));
+
+      // 1. Save full history locally (instant)
+      await fs.mkdir(path.dirname(localPath), { recursive: true });
+      await fs.writeFile(localPath, JSON.stringify(allMessages, null, 2), 'utf-8');
+
+      // 2. Save only compressed summary context to GitHub
       const { getGitHubContextManager } = await import('../lib/githubContextManager.js');
       const mgr = getGitHubContextManager();
       if (mgr) {
-        const allMessages = [
-          ...agentMessages,
-          { role: 'assistant', content: toWellFormedUnicode(content) },
-        ].map((m) => ({
-          role: m.role,
-          content: m.content,
-          timestamp: new Date().toISOString(),
-        }));
-
         await mgr.saveUserContext(String(userId ?? ''), { messages: allMessages });
-        await mgr.putFile(`users/${userId}/messages.json`, JSON.stringify(allMessages, null, 2), `Update messages for user ${userId}`);
       }
     } catch (saveError) {
       console.error('[chat] failed to save context:', saveError);

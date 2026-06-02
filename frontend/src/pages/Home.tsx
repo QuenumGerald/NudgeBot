@@ -62,7 +62,7 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
     );
   }
   return (
-    <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+    <code className="bg-muted text-foreground px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
       {children}
     </code>
   );
@@ -565,7 +565,11 @@ export default function Home() {
                     ? 'bg-primary text-primary-foreground rounded-br-none whitespace-pre-wrap'
                     : 'bg-card border border-border text-foreground rounded-bl-none'
                     }`}>
-                    <div className={`prose dark:prose-invert max-w-none text-sm break-words ${msg.role === 'user' ? 'prose-p:text-primary-foreground prose-headings:text-primary-foreground prose-strong:text-primary-foreground whitespace-pre-wrap' : ''}`}>
+                    <div className={`prose dark:prose-invert max-w-none text-sm break-words ${
+                      msg.role === 'user'
+                        ? 'prose-p:text-primary-foreground prose-headings:text-primary-foreground prose-strong:text-primary-foreground whitespace-pre-wrap'
+                        : 'prose-p:text-foreground/90 prose-headings:text-foreground prose-strong:text-foreground prose-li:text-foreground/90 prose-td:text-foreground/90'
+                    }`}>
                       {msg.role === 'assistant' ? (
                         <MarkdownRenderer content={msg.content} />
                       ) : (

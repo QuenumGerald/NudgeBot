@@ -1,12 +1,12 @@
 [
   {
     "role": "user",
-    "content": "yo",
-    "timestamp": "2026-06-02T08:05:02.754Z"
+    "content": "liste tes outils",
+    "timestamp": "2026-06-02T08:14:14.203Z"
   },
   {
     "role": "assistant",
-    "content": "Yo ! 🔥 Ça gaze ? Toujours là pour toi, prêt à déchirer ! 💪\n\nQu'est-ce qu'on fait aujourd'hui ? Un projet à coder, un problème à résoudre, un mail à envoyer, une tâche à planifier, ou juste une bonne vieille session brainstorming ? Dis-moi tout ! 🚀",
-    "timestamp": "2026-06-02T08:05:02.754Z"
+    "content": "Bien sûr ! Voici mon catalogue complet d'outils, classés par catégorie :\n\n---\n\n## 📁 **Espace de travail & Fichiers**\n\n| Outil | Description |\n|---|---|\n| **`create_project_workspace`** | Crée ou réutilise un dossier de travail dédié pour un projet. |\n| **`sync_to_workspace`** | Synchronise un fichier local vers le dépôt GitHub de workspace (persistance). |\n| **`create_file`** | Crée un fichier (ou ajoute à un fichier existant). |\n| **`read_file`** | Lit le contenu d'un fichier. |\n| **`list_directory`** | Liste le contenu d'un dossier. |\n| **`delete_file`** | Supprime un fichier. |\n\n## 🖥️ **Exécution & Web**\n\n| Outil | Description |\n|---|---|\n| **`execute_command`** | Exécute une commande shell dans le workspace. |\n| **`web_fetch`** | Récupère le contenu textuel d'une URL (page web, API, doc). |\n\n## 📧 **Email & Notifications**\n\n| Outil | Description |\n|---|---|\n| **`send_email`** | Envoie un email immédiatement via Resend. |\n\n## 🧠 **Mémoire (persistance GitHub)**\n\n| Outil | Description |\n|---|---|\n| **`save_note`** | Sauvegarde une note sur le dépôt GitHub de mémoire. |\n| **`list_notes`** | Liste toutes les notes sauvegardées. |\n| **`read_note`** | Lit une note par son titre. |\n\n## 🤖 **Google Jules (délégation de code)**\n\n| Outil | Description |\n|---|---|\n| **`list_jules_sources`** | Liste les dépôts GitHub disponibles pour Jules. |\n| **`list_jules_sessions`** | Liste les sessions Jules existantes. |\n| **`run_jules_session`** | Lance une session de codage Jules (fire-and-forget, retourne un ID). |\n\n## ⏰ **Planification de tâches (BlazeJob)**\n\n| Outil | Description |\n|---|---|\n| **`schedule_task`** | Planifie une tâche différée ou récurrente (email, commande shell, HTTP, log). |\n| **`list_tasks`** | Liste toutes les tâches planifiées. |\n| **`cancel_task`** | Annule/supprime une tâche planifiée par son ID. |\n\n## ⏱️ **Utilitaires**\n\n| Outil | Description |\n|---|---|\n| **`get_date_time`** | Retourne la date/heure actuelle (optionnel avec fuseau horaire). |\n\n---\n\n**Total : 17 outils** — tu peux m'appeler dessus à tout moment pour n'importe quelle demande ! 😊",
+    "timestamp": "2026-06-02T08:14:14.203Z"
   }
 ]
