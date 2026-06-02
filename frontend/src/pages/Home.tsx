@@ -576,17 +576,15 @@ export default function Home() {
                     ? 'bg-primary text-primary-foreground rounded-br-none whitespace-pre-wrap'
                     : 'bg-card border border-border text-foreground rounded-bl-none'
                     }`}>
-                    <div className={`prose dark:prose-invert max-w-none text-sm break-words ${
-                      msg.role === 'user'
-                        ? 'prose-p:text-primary-foreground prose-headings:text-primary-foreground prose-strong:text-primary-foreground whitespace-pre-wrap'
-                        : 'prose-p:text-foreground/90 prose-headings:text-foreground prose-strong:text-foreground prose-li:text-foreground/90 prose-td:text-foreground/90'
-                    }`}>
-                      {msg.role === 'assistant' ? (
+                    {msg.role === 'assistant' ? (
+                      <div className="prose dark:prose-invert max-w-none text-sm break-words prose-p:text-foreground/90 prose-headings:text-foreground prose-strong:text-foreground prose-li:text-foreground/90 prose-td:text-foreground/90">
                         <MarkdownRenderer content={msg.content} />
-                      ) : (
-                        msg.content
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="text-sm break-words whitespace-pre-wrap">
+                        {msg.content}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
