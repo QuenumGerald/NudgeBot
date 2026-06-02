@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Brain, LogOut, Settings as SettingsIcon, Send, Moon, Sun, Wrench, X, Zap } from 'lucide-react';
+import { Brain, LogOut, Settings as SettingsIcon, Send, Moon, Sun, Wrench, X, Zap, Mic, Copy, Check } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -28,9 +28,100 @@ type StreamEvent =
   | { type: 'error'; error: string }
   | { type: 'done' };
 
+
+const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
+  const [copied, setCopied] = useState(false);
+  const match = /language-(\w+)/.exec(className || '');
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(String(children).replace(/\n$/, ''));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (!inline && match) {
+    return (
+      <div className="relative group rounded-md overflow-hidden bg-zinc-950 my-4">
+        <div className="flex items-center justify-between px-4 py-2 bg-zinc-900 text-zinc-400 text-xs font-mono border-b border-zinc-800">
+          <span>{match[1]}</span>
+          <button
+            onClick={handleCopy}
+            className="hover:text-white transition-colors focus:outline-none flex items-center gap-1"
+            title="Copier le code"
+          >
+            {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>{copied ? 'Copié' : 'Copier'}</span>
+          </button>
+        </div>
+        <div className="p-4 overflow-x-auto text-sm text-zinc-100 font-mono">
+          <code className={className} {...props}>
+            {children}
+          </code>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+      {children}
+    </code>
+  );
+};
+
+
+const MarkdownRenderer = ({ content }: { content: string }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const isLong = content.length > 1500;
+
+  return (
+    <div className="relative">
+      <div className={`transition-all duration-300 ease-in-out ${!isExpanded && isLong ? 'max-h-[500px] overflow-hidden mask-image-bottom' : ''}`}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            code: CodeBlock as any,
+            table: ({node, ...props}) => <div className="overflow-x-auto my-4 border border-border rounded-lg"><table className="min-w-full divide-y divide-border" {...props} /></div>,
+            thead: ({node, ...props}) => <thead className="bg-muted" {...props} />,
+            th: ({node, ...props}) => <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider" {...props} />,
+            td: ({node, ...props}) => <td className="px-4 py-2 text-sm whitespace-nowrap border-t border-border" {...props} />,
+            ul: ({node, ...props}) => <ul className="list-disc pl-6 my-4 space-y-1" {...props} />,
+            ol: ({node, ...props}) => <ol className="list-decimal pl-6 my-4 space-y-1" {...props} />,
+            hr: ({node, ...props}) => <hr className="my-6 border-t-2 border-border/50" {...props} />,
+            a: ({node, ...props}) => <a className="text-primary hover:underline" target="_blank" rel="noopener noreferrer" {...props} />,
+            h1: ({node, ...props}) => <h1 className="text-2xl font-bold mt-6 mb-4" {...props} />,
+            h2: ({node, ...props}) => <h2 className="text-xl font-bold mt-5 mb-3" {...props} />,
+            h3: ({node, ...props}) => <h3 className="text-lg font-semibold mt-4 mb-2" {...props} />
+          }}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
+      {!isExpanded && isLong && (
+        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-card to-transparent flex items-end justify-center pb-2">
+          <button
+            onClick={() => setIsExpanded(true)}
+            className="text-sm bg-secondary text-secondary-foreground px-4 py-1.5 rounded-full shadow-sm hover:bg-secondary/80 font-medium z-10"
+          >
+            Voir plus
+          </button>
+        </div>
+      )}
+      {isExpanded && isLong && (
+        <button
+          onClick={() => setIsExpanded(false)}
+          className="mt-4 text-sm text-primary hover:underline font-medium"
+        >
+          Voir moins
+        </button>
+      )}
+    </div>
+  );
+};
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
+  const [isListening, setIsListening] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [isRequestInFlight, setIsRequestInFlight] = useState(false);
   const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
@@ -51,17 +142,37 @@ export default function Home() {
 
   useEffect(() => {
     if (!user.id) return;
-    const savedMessages = localStorage.getItem(storageKey);
-    if (!savedMessages) return;
 
-    try {
-      const parsed = JSON.parse(savedMessages) as Message[];
-      if (Array.isArray(parsed)) {
-        setMessages(parsed);
+    // Load local messages first for instant feedback
+    const savedMessages = localStorage.getItem(storageKey);
+    if (savedMessages) {
+      try {
+        const parsed = JSON.parse(savedMessages) as Message[];
+        if (Array.isArray(parsed)) {
+          setMessages(parsed);
+        }
+      } catch (error) {
+        console.error('Could not parse local messages:', error);
       }
-    } catch (error) {
-      console.error('Could not restore saved conversation:', error);
     }
+
+    // Then fetch from server
+    api.get('/chat/history')
+      .then((data) => {
+        if (data && data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+          // Normalize format if needed
+          const formatted = data.messages.map((m: any) => ({
+            role: m.role,
+            content: m.content || '',
+            tools: m.tools
+          }));
+          setMessages(formatted);
+          localStorage.setItem(storageKey, JSON.stringify(formatted));
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load chat history from server:', err);
+      });
   }, [storageKey, user.id]);
 
   useEffect(() => {
@@ -80,6 +191,64 @@ export default function Home() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isThinking]);
+
+
+  const handleMicrophoneClick = () => {
+    // Check for browser support
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Désolé, votre navigateur ne supporte pas la reconnaissance vocale.");
+      return;
+    }
+
+    if (isListening) {
+      // If already listening, we could stop it, but speech recognition stops automatically on end usually.
+      // We'll let it be managed by onend
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = navigator.language || 'fr-FR';
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0].transcript)
+        .join('');
+
+      if (event.results[0].isFinal) {
+        setInput(prev => {
+          const space = prev.length > 0 && !prev.endsWith(' ') ? ' ' : '';
+          return prev + space + transcript;
+        });
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error', event.error);
+      setIsListening(false);
+      if (event.error === 'not-allowed') {
+        alert("Permission refusée pour le microphone.");
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    try {
+      recognition.start();
+    } catch (err) {
+      console.error(err);
+      setIsListening(false);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -326,7 +495,7 @@ export default function Home() {
                     }`}>
                     <div className={`prose dark:prose-invert max-w-none text-sm break-words ${msg.role === 'user' ? 'prose-p:text-primary-foreground prose-headings:text-primary-foreground prose-strong:text-primary-foreground' : ''}`}>
                       {msg.role === 'assistant' ? (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                        <MarkdownRenderer content={msg.content} />
                       ) : (
                         msg.content
                       )}
@@ -416,6 +585,15 @@ export default function Home() {
               rows={1}
             />
             <div className="p-2 h-full flex items-end">
+
+              <Button
+                size="icon"
+                className={`rounded-lg h-10 w-10 shrink-0 mr-2 ${isListening ? 'bg-red-500 hover:bg-red-600 animate-pulse' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}
+                onClick={handleMicrophoneClick}
+                title="Dictée vocale"
+              >
+                <Mic className="w-4 h-4" />
+              </Button>
               <Button
                 size="icon"
                 className="rounded-lg h-10 w-10 shrink-0"

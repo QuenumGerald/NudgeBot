@@ -39,7 +39,37 @@ type ChatBody = {
   messages?: Array<{ role?: string; content?: string }>;
 };
 
+
+router.get('/history', async (req: AuthenticatedRequest, res: ExpressResponse) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  try {
+    const { getGitHubContextManager } = await import('../lib/githubContextManager.js');
+    const mgr = getGitHubContextManager();
+    if (!mgr) {
+      res.status(500).json({ error: 'GitHub context not configured' });
+      return;
+    }
+
+    const ctx = await mgr.loadUserContext(String(userId));
+    const messagesJson = await mgr.getFile(`users/${userId}/messages.json`);
+    if (messagesJson) {
+      res.json({ messages: JSON.parse(messagesJson) });
+    } else {
+      res.json({ messages: [] });
+    }
+  } catch (error) {
+    console.error('[chat] history error:', error);
+    res.status(500).json({ error: 'Failed to load history' });
+  }
+});
+
 router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, ChatBody>, res: ExpressResponse) => {
+
   const { messages } = req.body;
   const userId = req.user?.id;
 
@@ -159,6 +189,7 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
         }));
 
         await mgr.saveUserContext(String(userId ?? ''), { messages: allMessages });
+        await mgr.putFile(`users/${userId}/messages.json`, JSON.stringify(allMessages, null, 2), `Update messages for user ${userId}`);
       }
     } catch (saveError) {
       console.error('[chat] failed to save context:', saveError);
