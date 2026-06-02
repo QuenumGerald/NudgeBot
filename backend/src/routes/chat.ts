@@ -56,9 +56,12 @@ router.get('/history', async (req: AuthenticatedRequest, res: ExpressResponse) =
     }
 
     const ctx = await mgr.loadUserContext(String(userId));
-    const messagesJson = await mgr.getFile(`users/${userId}/messages.json`);
-    if (messagesJson) {
-      res.json({ messages: JSON.parse(messagesJson) });
+    if (ctx) {
+      const summaryMsg = {
+        role: 'assistant',
+        content: `**Résumé des conversations précédentes :**\n\n${(ctx.summary || 'Aucun résumé disponible.').replace(/[\x00-\x09\x0b-\x1f\x7f]/g, "")}\n\n*Sujets abordés : ${ctx.active_topics ? ctx.active_topics.join(', ') : 'Aucun'}*`
+      };
+      res.json({ messages: [summaryMsg] });
     } else {
       res.json({ messages: [] });
     }
@@ -130,7 +133,7 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
           if (ctx.key_decisions?.length) parts.push(`Décisions: ${ctx.key_decisions.map((d: any) => d.text).join("; ")}`);
           if (ctx.active_topics?.length) parts.push(`Sujets actifs: ${ctx.active_topics.join(", ")}`);
           if (ctx.next_actions?.length) parts.push(`Actions: ${ctx.next_actions.map((a: any) => a.description).join("; ")}`);
-          if (parts.length) previousContext = parts.join("\n");
+          if (parts.length) previousContext = parts.join("\n").replace(/[\x00-\x09\x0b-\x1f\x7f]/g, ""); // Sanitize control chars
         }
       }
     } catch {
@@ -189,7 +192,6 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
         }));
 
         await mgr.saveUserContext(String(userId ?? ''), { messages: allMessages });
-        await mgr.putFile(`users/${userId}/messages.json`, JSON.stringify(allMessages, null, 2), `Update messages for user ${userId}`);
       }
     } catch (saveError) {
       console.error('[chat] failed to save context:', saveError);
