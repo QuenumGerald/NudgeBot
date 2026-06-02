@@ -217,10 +217,9 @@ export default function Home() {
       return;
     }
 
-    const baseText = input;
     const recognition = new SpeechRecognition();
     recognition.lang = 'fr-FR'; // Force French for optimal phonetic matching
-    recognition.interimResults = true;
+    recognition.interimResults = false; // Désactivé car on ne gère que les résultats finaux pour éviter l'accumulation d'interim avec prev
     recognition.continuous = true; // continuous dictation so it does not cut off during pauses
     recognition.maxAlternatives = 1;
 
@@ -230,20 +229,31 @@ export default function Home() {
       setIsListening(true);
     };
 
+    // FIX BUG Répétition Speech-to-Text:
+    // 1. On garde l'index du dernier résultat traité (lastProcessedIndex) pour ne lire QUE les nouveaux résultats (évite de relire tout l'historique event.results depuis le début).
+    // 2. On utilise le callback setInput(prev => ...) pour se baser sur la valeur *actuelle* du champ de saisie, au lieu de capturer une closure figée de "input" au moment du clic.
+    let lastProcessedIndex = -1;
+    let lastProcessedTranscript = '';
+
     recognition.onresult = (event: any) => {
       let finalTranscript = '';
-      let interimTranscript = '';
-      for (let i = 0; i < event.results.length; ++i) {
-        const transcript = event.results[i][0].transcript;
+
+      for (let i = lastProcessedIndex + 1; i < event.results.length; i++) {
         if (event.results[i].isFinal) {
-          finalTranscript += transcript;
-        } else {
-          interimTranscript += transcript;
+          const transcript = event.results[i][0].transcript;
+
+          // Dédoublonnage : éviter de répéter le même résultat consécutif (bug du Speech API)
+          if (transcript.trim().toLowerCase() !== lastProcessedTranscript.trim().toLowerCase()) {
+            finalTranscript += transcript;
+            lastProcessedTranscript = transcript;
+          }
+          lastProcessedIndex = i; // On met à jour l'index pour ne pas re-traiter ce résultat au prochain onresult
         }
       }
 
-      const separator = baseText && !baseText.endsWith(' ') ? ' ' : '';
-      setInput(baseText + separator + finalTranscript + interimTranscript);
+      if (finalTranscript) {
+        setInput(prev => prev + (prev && !prev.endsWith(' ') ? ' ' : '') + finalTranscript);
+      }
     };
 
     recognition.onerror = (event: any) => {
