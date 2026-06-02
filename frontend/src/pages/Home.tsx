@@ -217,10 +217,11 @@ export default function Home() {
       return;
     }
 
+    const baseText = input;
     const recognition = new SpeechRecognition();
-    recognition.lang = navigator.language || 'fr-FR';
+    recognition.lang = 'fr-FR'; // Force French for optimal phonetic matching
     recognition.interimResults = true;
-    recognition.continuous = false; // set to false for single utterance dictation
+    recognition.continuous = true; // continuous dictation so it does not cut off during pauses
     recognition.maxAlternatives = 1;
 
     recognitionRef.current = recognition;
@@ -231,18 +232,18 @@ export default function Home() {
 
     recognition.onresult = (event: any) => {
       let finalTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
+      let interimTranscript = '';
+      for (let i = 0; i < event.results.length; ++i) {
+        const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
+          finalTranscript += transcript;
+        } else {
+          interimTranscript += transcript;
         }
       }
 
-      if (finalTranscript) {
-        setInput(prev => {
-          const space = prev.length > 0 && !prev.endsWith(' ') ? ' ' : '';
-          return prev + space + finalTranscript;
-        });
-      }
+      const separator = baseText && !baseText.endsWith(' ') ? ' ' : '';
+      setInput(baseText + separator + finalTranscript + interimTranscript);
     };
 
     recognition.onerror = (event: any) => {
