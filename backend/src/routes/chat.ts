@@ -167,12 +167,33 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
     }));
 
     const maxSteps = getAgentMaxSteps();
-    const result = await agent.generate(agentMessages, { maxSteps });
+    const result = await agent.stream(agentMessages, { maxSteps });
 
-    const content = result.text ?? '';
+    let content = '';
 
-    if (content) {
-      res.write(`data: ${JSON.stringify({ type: 'delta', content })}\n\n`);
+    for await (const chunk of result.fullStream) {
+      if (chunk.type === 'text-delta') {
+        const text = chunk.payload.text || '';
+        content += text;
+        res.write(`data: ${JSON.stringify({ type: 'delta', content: text })}\n\n`);
+      } else if (chunk.type === 'tool-call') {
+        res.write(`data: ${JSON.stringify({
+          type: 'tool_start',
+          tool_name: chunk.payload.toolName,
+          input: chunk.payload.args
+        })}\n\n`);
+      } else if (chunk.type === 'tool-result') {
+        res.write(`data: ${JSON.stringify({
+          type: 'tool_result',
+          tool_name: chunk.payload.toolName,
+          result: chunk.payload.result
+        })}\n\n`);
+      } else if (chunk.type === 'error') {
+        res.write(`data: ${JSON.stringify({
+          type: 'error',
+          error: chunk.payload.error instanceof Error ? chunk.payload.error.message : String(chunk.payload.error)
+        })}\n\n`);
+      }
     }
 
     // Save updated context back to GitHub
