@@ -1,8 +1,8 @@
 import { jobs } from './scheduler.js';
 import { getStore, NotificationRecord } from './githubStore.js';
 
-const scheduledNotificationIds = new Set<number>();
-let workerStarted = false;
+export const scheduledNotificationIds = new Set<number>();
+export const workerState = { started: false };
 
 const getResendConfig = () => {
   const apiKey = (process.env.RESEND_API_KEY || '').trim();
@@ -39,20 +39,26 @@ const sendResendEmail = async (notification: NotificationRecord) => {
 };
 
 const scheduleNotificationExecution = (notificationId: number, sendAt: Date) => {
+  console.log(`[notifications] scheduleNotificationExecution called for id: ${notificationId}, sendAt: ${sendAt.toISOString()}`);
   if (scheduledNotificationIds.has(notificationId)) {
+    console.log(`[notifications] id: ${notificationId} is already scheduled, returning early.`);
     return;
   }
 
   scheduledNotificationIds.add(notificationId);
 
+  const finalRunAt = sendAt.getTime() <= Date.now() ? new Date() : sendAt;
+  console.log(`[notifications] Scheduling task in BlazeJob for id: ${notificationId} to run at: ${finalRunAt.toISOString()}`);
   jobs.schedule(
     async () => {
+      console.log(`[notifications] BlazeJob executing processNotificationById for id: ${notificationId}`);
       await processNotificationById(notificationId);
     },
     {
-      runAt: sendAt.getTime() <= Date.now() ? new Date() : sendAt,
+      runAt: finalRunAt,
       maxRuns: 1,
       onEnd: () => {
+        console.log(`[notifications] BlazeJob onEnd callback for id: ${notificationId}`);
         scheduledNotificationIds.delete(notificationId);
       },
     }
@@ -111,8 +117,10 @@ const processNotificationById = async (notificationId: number) => {
 };
 
 const reconcilePendingNotifications = async () => {
+  console.log('[notifications] reconcilePendingNotifications started');
   const store = await getStore();
   const pending = store.getPendingNotifications();
+  console.log(`[notifications] found ${pending.length} pending notifications`);
 
   for (const notification of pending) {
     scheduleNotificationExecution(notification.id, new Date(notification.send_at));
@@ -124,8 +132,18 @@ export const scheduleNotificationJob = async (notificationId: number, sendAt: Da
 };
 
 export const startNotificationWorker = () => {
-  if (workerStarted) return;
-  workerStarted = true;
+  if (workerState.started) return;
+  workerState.started = true;
+
+  try {
+    const db = (jobs as any).db;
+    if (db && typeof db.prepare === 'function') {
+      db.prepare("DELETE FROM tasks WHERE type IS NULL AND config IS NULL").run();
+      console.log('[notifications] Cleaned up old in-memory tasks from SQLite database');
+    }
+  } catch (err) {
+    console.error('[notifications] Error cleaning up old tasks:', err);
+  }
 
   jobs.start();
 

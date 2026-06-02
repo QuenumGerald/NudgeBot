@@ -5,6 +5,8 @@ import { promises as fs } from "fs";
 import { exec as execCallback } from "child_process";
 import { promisify } from "util";
 import { jobs } from "../scheduler.js";
+import { getStore } from "../githubStore.js";
+import { scheduleNotificationJob } from "../notifications.js";
 
 const exec = promisify(execCallback);
 
@@ -110,8 +112,25 @@ export const createSchedulingTools = () => {
     }) => {
       try {
         const runAt = new Date(Date.now() + delayMs);
-
         jobs.start();
+
+        if (actionType === "email") {
+          if (!recipientEmail || !subject || !body) return "Missing recipientEmail, subject, or body for email action.";
+          const store = await getStore();
+          const created = await store.createNotification(1, {
+            recipient_email: recipientEmail,
+            subject,
+            body,
+            send_at: runAt.toISOString(),
+            recurrence_interval_minutes: intervalMs ? Math.round(intervalMs / 60_000) : undefined,
+            max_runs: maxRuns,
+          });
+          await scheduleNotificationJob(created.id, runAt);
+          const typeStr = intervalMs && intervalMs > 0
+            ? `recurring every ${Math.round(intervalMs / 60000)}m (max ${maxRuns ?? "∞"} runs)`
+            : `one-off in ${delayMs}ms`;
+          return `Email task '${taskName}' scheduled persistently via githubStore (id: ${created.id}, ${typeStr}).`;
+        }
 
         let taskFn: () => Promise<void>;
         const scheduleOpts: any = {
@@ -121,10 +140,6 @@ export const createSchedulingTools = () => {
         };
 
         switch (actionType) {
-          case "email":
-            if (!recipientEmail || !subject || !body) return "Missing recipientEmail, subject, or body for email action.";
-            taskFn = async () => { await sendEmail(recipientEmail, subject, body); };
-            break;
           case "command":
             if (!command) return "Missing command for command action.";
             taskFn = async () => {
@@ -162,7 +177,7 @@ export const createSchedulingTools = () => {
           ? `recurring every ${Math.round(intervalMs / 1000)}s (max ${maxRuns ?? "∞"} runs)`
           : `one-off in ${delayMs}ms`;
 
-        return `Task '${taskName}' scheduled (id: ${taskId}, ${actionType}, ${type}).`;
+        return `System task '${taskName}' scheduled (id: ${taskId}, ${actionType}, ${type}).`;
       } catch (e: any) {
         return `Failed to schedule task: ${e.message}`;
       }
@@ -171,19 +186,35 @@ export const createSchedulingTools = () => {
 
   const listTasksTool = createTool({
     id: "list_tasks",
-    description: "Lists all scheduled tasks from BlazeJob (SQLite-persisted).",
+    description: "Lists all scheduled tasks (emails and system tasks).",
     inputSchema: z.object({}),
     execute: async () => {
       try {
-        const tasks = jobs.getTasks();
+        const store = await getStore();
+        const notifications = store.getNotificationsByUser(1);
+        const tasks = jobs.getTasks().filter((t: any) => t.type !== null || t.config !== null);
 
-        if (!tasks || tasks.length === 0) return "No scheduled tasks.";
+        let result = "";
 
-        const lines = tasks.map((t: any) => {
-          const interval = t.interval ? ` | every ${Math.round(t.interval / 1000)}s` : "";
-          return `#${t.id} — [${t.status}] type: ${t.type || "custom"} | runAt: ${t.runAt}${interval}`;
-        });
-        return lines.join("\n");
+        if (notifications.length > 0) {
+          result += "=== Persistent Email Tasks (survive restarts) ===\n";
+          result += notifications.map((n: any) => {
+            const recurrence = n.recurrence_interval_minutes ? ` | every ${n.recurrence_interval_minutes}m (max ${n.max_runs ?? "∞"} runs)` : "";
+            return `#${n.id} — [${n.status}] to: ${n.recipient_email} | sendAt: ${n.send_at}${recurrence}`;
+          }).join("\n") + "\n";
+        } else {
+          result += "No persistent email tasks.\n";
+        }
+
+        if (tasks.length > 0) {
+          result += "\n=== System HTTP Tasks ===\n";
+          result += tasks.map((t: any) => {
+            const interval = t.interval ? ` | every ${Math.round(t.interval / 1000)}s` : "";
+            return `#${t.id} — [${t.status}] type: ${t.type || "custom"} | runAt: ${t.runAt}${interval}`;
+          }).join("\n");
+        }
+
+        return result;
       } catch (e: any) {
         return `Failed to list tasks: ${e.message}`;
       }
@@ -192,14 +223,24 @@ export const createSchedulingTools = () => {
 
   const cancelTaskTool = createTool({
     id: "cancel_task",
-    description: "Deletes a scheduled task by its ID.",
+    description: "Deletes or cancels a scheduled task by its ID.",
     inputSchema: z.object({
-      taskId: z.number().describe("The task ID to delete."),
+      taskId: z.number().describe("The task ID to delete/cancel."),
     }),
     execute: async ({ taskId }) => {
       try {
+        const store = await getStore();
+        const notification = store.getNotification(taskId);
+        if (notification) {
+          await store.updateNotification(taskId, {
+            status: "cancelled",
+            sent_at: new Date().toISOString(),
+          });
+          return `Email task #${taskId} cancelled successfully.`;
+        }
+
         jobs.deleteTask(taskId);
-        return `Task #${taskId} deleted.`;
+        return `System task #${taskId} deleted successfully.`;
       } catch (e: any) {
         return `Failed to cancel task: ${e.message}`;
       }

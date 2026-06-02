@@ -248,19 +248,34 @@ export class GitHubContextManager {
     content: string,
     message: string
   ): Promise<boolean> {
-    const sha = await this.getFileSha(filePath);
-    const body: Record<string, string> = {
+    let sha = await this.getFileSha(filePath);
+    const body: Record<string, any> = {
       message,
       content: Buffer.from(content, "utf8").toString("base64"),
       branch: "main",
     };
     if (sha) body.sha = sha;
 
-    const res = await fetch(`${this.baseUrl}/contents/${filePath}`, {
+    let res = await fetch(`${this.baseUrl}/contents/${filePath}`, {
       method: "PUT",
       headers: this.headers,
       body: JSON.stringify(body),
     });
+
+    if (res.status === 409) {
+      console.warn(`[github-ctx] 409 conflict writing ${filePath}. Retrying with fresh SHA...`);
+      const freshSha = await this.getFileSha(filePath);
+      if (freshSha) {
+        body.sha = freshSha;
+      } else {
+        delete body.sha;
+      }
+      res = await fetch(`${this.baseUrl}/contents/${filePath}`, {
+        method: "PUT",
+        headers: this.headers,
+        body: JSON.stringify(body),
+      });
+    }
 
     const ok = res.status === 200 || res.status === 201;
     if (ok) {

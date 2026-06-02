@@ -7,6 +7,7 @@ import path from 'path';
 
 const dbPath = (process.env.BLAZERJOB_DB_PATH || path.join(process.cwd(), 'blazerjob.db')).trim();
 
+console.log('[scheduler] Initializing jobs singleton');
 const jobs = new BlazeJob({
   storage: 'sqlite',
   dbPath,
