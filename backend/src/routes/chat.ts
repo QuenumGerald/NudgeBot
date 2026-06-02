@@ -3,6 +3,7 @@ import { getAgent } from '../lib/agent/graph.js';
 import { getStore } from '../lib/githubStore.js';
 import { applyContextBudget, getMaxInputTokensFromEnv } from '../lib/agent/contextBudget.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
+import { toWellFormedUnicode } from '../lib/githubContextManager.js';
 
 const router = Router();
 
@@ -162,7 +163,7 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
     // Convert to Mastra/AI SDK message format
     const agentMessages = contextBudget.messages.map((m) => ({
       role: m.role as 'user' | 'assistant',
-      content: m.content,
+      content: toWellFormedUnicode(m.content || ''),
     }));
 
     const maxSteps = getAgentMaxSteps();
@@ -181,7 +182,7 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
       if (mgr) {
         const allMessages = [
           ...agentMessages,
-          { role: 'assistant', content },
+          { role: 'assistant', content: toWellFormedUnicode(content) },
         ].map((m) => ({
           role: m.role,
           content: m.content,

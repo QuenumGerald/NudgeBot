@@ -3,6 +3,15 @@
  * Optimisé pour Render avec déploiements éphémères.
  */
 
+export const toWellFormedUnicode = (str: string): string => {
+  if (typeof (str as any).toWellFormed === "function") {
+    return (str as any).toWellFormed();
+  }
+  return str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|([^\uD800-\uDBFF]|^)[\uDC00-\uDFFF]/g, (match, p1) => {
+    return p1 ? p1 + "\uFFFD" : "\uFFFD";
+  });
+};
+
 export interface ContextMessage {
   role: string;
   content: string;
@@ -52,6 +61,14 @@ export class GitHubContextManager {
   private readonly baseUrl: string;
   private readonly headers: Record<string, string>;
 
+  // In-memory caches for low-latency operations
+  private readonly contextCache = new Map<string, CompressedContext>();
+  private readonly fileCache = new Map<string, string>();
+  private readonly pendingWrites = new Map<
+    string,
+    { content: string; message: string; timeout: ReturnType<typeof setTimeout> }
+  >();
+
   constructor(
     private readonly token: string,
     private readonly owner: string,
@@ -66,6 +83,12 @@ export class GitHubContextManager {
   }
 
   // ── Compression ────────────────────────────────────────────────────────────
+
+  private safeSlice(str: string, limit: number): string {
+    const chars = Array.from(str);
+    if (chars.length <= limit) return str;
+    return chars.slice(0, limit).join("");
+  }
 
   private compressContext(context: ConversationContext): CompressedContext {
     const originalSize = JSON.stringify(context).length;
@@ -104,7 +127,7 @@ export class GitHubContextManager {
   ): Array<{ text: string; timestamp: string }> {
     if (context.decisions) {
       return context.decisions.map((d) => ({
-        text: d.slice(0, 200),
+        text: this.safeSlice(d, 200),
         timestamp: new Date().toISOString(),
       }));
     }
@@ -113,7 +136,7 @@ export class GitHubContextManager {
     return (context.messages ?? [])
       .filter((m) => DECISION_KEYWORDS.some((kw) => m.content.toLowerCase().includes(kw)))
       .slice(0, 10)
-      .map((m) => ({ text: m.content.slice(0, 200), timestamp: m.timestamp ?? now }));
+      .map((m) => ({ text: this.safeSlice(m.content, 200), timestamp: m.timestamp ?? now }));
   }
 
   private extractTopics(context: ConversationContext): string[] {
@@ -143,7 +166,7 @@ export class GitHubContextManager {
       .filter((m) => ACTION_KEYWORDS.some((kw) => m.content.toLowerCase().includes(kw)))
       .slice(0, 5)
       .map((m) => ({
-        description: m.content.slice(0, 150),
+        description: this.safeSlice(m.content, 150),
         priority: "medium",
         timestamp: m.timestamp ?? now,
       }));
@@ -203,19 +226,24 @@ export class GitHubContextManager {
 
 
   public async getFile(filePath: string): Promise<string | null> {
+    if (this.fileCache.has(filePath)) {
+      return this.fileCache.get(filePath)!;
+    }
     try {
       const res = await fetch(`${this.baseUrl}/contents/${filePath}`, {
         headers: this.headers,
       });
       if (!res.ok) return null;
       const data = (await res.json()) as { content: string };
-      return Buffer.from(data.content, "base64").toString("utf-8");
+      const content = Buffer.from(data.content, "base64").toString("utf-8");
+      this.fileCache.set(filePath, content);
+      return content;
     } catch {
       return null;
     }
   }
 
-  public async putFile(
+  public async rawPutFile(
     filePath: string,
     content: string,
     message: string
@@ -234,7 +262,53 @@ export class GitHubContextManager {
       body: JSON.stringify(body),
     });
 
-    return res.status === 200 || res.status === 201;
+    const ok = res.status === 200 || res.status === 201;
+    if (ok) {
+      console.log(`[github-ctx] successfully synced ${filePath} to GitHub`);
+    } else {
+      console.error(`[github-ctx] failed to sync ${filePath} to GitHub: ${res.status}`);
+    }
+    return ok;
+  }
+
+  public async putFile(
+    filePath: string,
+    content: string,
+    message: string
+  ): Promise<boolean> {
+    // 1. Update the local file cache immediately
+    this.fileCache.set(filePath, content);
+
+    // 2. Debounce writing to GitHub (30 seconds)
+    const existing = this.pendingWrites.get(filePath);
+    if (existing) {
+      clearTimeout(existing.timeout);
+    }
+
+    const timeout = setTimeout(async () => {
+      this.pendingWrites.delete(filePath);
+      await this.rawPutFile(filePath, content, message);
+    }, 30000); // 30 seconds debounce
+
+    this.pendingWrites.set(filePath, { content, message, timeout });
+    console.log(`[github-ctx] scheduled save for ${filePath} in 30s`);
+    return true;
+  }
+
+  public async flush(): Promise<void> {
+    const pending = Array.from(this.pendingWrites.entries());
+    if (pending.length === 0) return;
+
+    console.log(`[github-ctx] flushing ${pending.length} pending file(s) to GitHub...`);
+    for (const [filePath, item] of pending) {
+      clearTimeout(item.timeout);
+      this.pendingWrites.delete(filePath);
+      try {
+        await this.rawPutFile(filePath, item.content, item.message);
+      } catch (err) {
+        console.error(`[github-ctx] error flushing ${filePath} on exit:`, err);
+      }
+    }
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────
@@ -242,6 +316,7 @@ export class GitHubContextManager {
   async saveUserContext(userId: string, context: ConversationContext): Promise<boolean> {
     try {
       const compressed = this.compressContext(context);
+      this.contextCache.set(userId, compressed);
       const json = JSON.stringify(compressed, null, 2);
       const ok = await this.putFile(
         `users/${userId}/context.json`,
@@ -250,10 +325,8 @@ export class GitHubContextManager {
       );
       if (ok) {
         console.log(
-          `[github-ctx] context saved for ${userId} (compression: ${compressed.metadata.compression_ratio}%)`
+          `[github-ctx] context saved in cache for ${userId} (compression: ${compressed.metadata.compression_ratio}%)`
         );
-      } else {
-        console.error(`[github-ctx] failed to save context for ${userId}`);
       }
       return ok;
     } catch (err) {
@@ -263,6 +336,11 @@ export class GitHubContextManager {
   }
 
   async loadUserContext(userId: string): Promise<CompressedContext | null> {
+    // 1. Check in-memory cache first
+    if (this.contextCache.has(userId)) {
+      return this.contextCache.get(userId)!;
+    }
+
     try {
       const res = await fetch(`${this.baseUrl}/contents/users/${userId}/context.json`, {
         headers: this.headers,
@@ -280,9 +358,32 @@ export class GitHubContextManager {
       const data = (await res.json()) as { content: string };
       const json = Buffer.from(data.content, "base64").toString("utf-8");
       const context = JSON.parse(json) as CompressedContext;
+
+      // Clean loaded context to ensure all strings are well-formed Unicode
+      if (context) {
+        if (context.summary) context.summary = toWellFormedUnicode(context.summary);
+        if (Array.isArray(context.key_decisions)) {
+          context.key_decisions = context.key_decisions.map((d) => ({
+            ...d,
+            text: toWellFormedUnicode(d.text || ""),
+          }));
+        }
+        if (Array.isArray(context.active_topics)) {
+          context.active_topics = context.active_topics.map((t) => toWellFormedUnicode(t || ""));
+        }
+        if (Array.isArray(context.next_actions)) {
+          context.next_actions = context.next_actions.map((a) => ({
+            ...a,
+            description: toWellFormedUnicode(a.description || ""),
+          }));
+        }
+      }
+
       console.log(
         `[github-ctx] context loaded for ${userId} (${context.metadata.compressed_size} bytes)`
       );
+      // Cache it
+      this.contextCache.set(userId, context);
       return context;
     } catch (err) {
       console.error("[github-ctx] loadUserContext error:", err);
@@ -400,6 +501,15 @@ export const getGitHubWorkspaceManager = (): GitHubContextManager | null => work
 
 // Compatibility aliases
 export const getGitHubContextManager = (): GitHubContextManager | null => memoryInstance;
+
+export const flushGitHubContextManagers = async () => {
+  if (memoryInstance) {
+    await memoryInstance.flush();
+  }
+  if (workspaceInstance) {
+    await workspaceInstance.flush();
+  }
+};
 
 export const resetManagerForTesting = () => {
   memoryInstance = null;

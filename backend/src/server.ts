@@ -72,12 +72,18 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Flush store to GitHub on shutdown
 import { getStoreSync } from './lib/githubStore.js';
+import { flushGitHubContextManagers } from './lib/githubContextManager.js';
 
 const shutdown = async () => {
   const store = getStoreSync();
   if (store) {
     console.log('[store] flushing to GitHub before exit...');
     await store.flush();
+  }
+  try {
+    await flushGitHubContextManagers();
+  } catch (err) {
+    console.error('[server] error flushing context managers on exit:', err);
   }
   process.exit(0);
 };

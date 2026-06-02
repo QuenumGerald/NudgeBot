@@ -79,6 +79,8 @@ const MarkdownRenderer = ({ content }: { content: string }) => {
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
+            p: ({node, ...props}) => <p className="whitespace-pre-wrap" {...props} />,
+            li: ({node, ...props}) => <li className="whitespace-pre-wrap" {...props} />,
             code: CodeBlock as any,
             table: ({node, ...props}) => <div className="overflow-x-auto my-4 border border-border rounded-lg"><table className="min-w-full divide-y divide-border" {...props} /></div>,
             thead: ({node, ...props}) => <thead className="bg-muted" {...props} />,
@@ -128,6 +130,7 @@ export default function Home() {
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[]>([]);
+  const recognitionRef = useRef<any>(null);
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
 
@@ -202,8 +205,13 @@ export default function Home() {
     }
 
     if (isListening) {
-      // If already listening, we could stop it, but speech recognition stops automatically on end usually.
-      // We'll let it be managed by onend
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          console.error("Failed to stop recognition:", e);
+        }
+      }
       setIsListening(false);
       return;
     }
@@ -211,21 +219,27 @@ export default function Home() {
     const recognition = new SpeechRecognition();
     recognition.lang = navigator.language || 'fr-FR';
     recognition.interimResults = true;
+    recognition.continuous = false; // set to false for single utterance dictation
     recognition.maxAlternatives = 1;
+
+    recognitionRef.current = recognition;
 
     recognition.onstart = () => {
       setIsListening(true);
     };
 
     recognition.onresult = (event: any) => {
-      const transcript = Array.from(event.results)
-        .map((result: any) => result[0].transcript)
-        .join('');
+      let finalTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        }
+      }
 
-      if (event.results[0].isFinal) {
+      if (finalTranscript) {
         setInput(prev => {
           const space = prev.length > 0 && !prev.endsWith(' ') ? ' ' : '';
-          return prev + space + transcript;
+          return prev + space + finalTranscript;
         });
       }
     };
@@ -234,12 +248,13 @@ export default function Home() {
       console.error('Speech recognition error', event.error);
       setIsListening(false);
       if (event.error === 'not-allowed') {
-        alert("Permission refusée pour le microphone.");
+        alert("Permission refusée pour le microphone. Veuillez autoriser l'accès dans les paramètres de votre navigateur.");
       }
     };
 
     recognition.onend = () => {
       setIsListening(false);
+      recognitionRef.current = null;
     };
 
     try {
@@ -247,6 +262,7 @@ export default function Home() {
     } catch (err) {
       console.error(err);
       setIsListening(false);
+      recognitionRef.current = null;
     }
   };
 
@@ -490,10 +506,10 @@ export default function Home() {
 
                 {msg.content && (
                   <div className={`max-w-[90%] md:max-w-3xl p-4 rounded-xl shadow-sm ${msg.role === 'user'
-                    ? 'bg-primary text-primary-foreground rounded-br-none'
+                    ? 'bg-primary text-primary-foreground rounded-br-none whitespace-pre-wrap'
                     : 'bg-card border border-border text-foreground rounded-bl-none'
                     }`}>
-                    <div className={`prose dark:prose-invert max-w-none text-sm break-words ${msg.role === 'user' ? 'prose-p:text-primary-foreground prose-headings:text-primary-foreground prose-strong:text-primary-foreground' : ''}`}>
+                    <div className={`prose dark:prose-invert max-w-none text-sm break-words ${msg.role === 'user' ? 'prose-p:text-primary-foreground prose-headings:text-primary-foreground prose-strong:text-primary-foreground whitespace-pre-wrap' : ''}`}>
                       {msg.role === 'assistant' ? (
                         <MarkdownRenderer content={msg.content} />
                       ) : (

@@ -10,9 +10,12 @@ const exec = promisify(execCallback);
 
 // ── Workspace helpers ─────────────────────────────────────────────────────────
 
+const getWorkspaceRoot = (): string => {
+  return (process.env.NUDGEBOT_WORKDIR || path.join(process.cwd(), "workspace")).trim();
+};
+
 const getProjectsRoot = () => {
-  const base = (process.env.NUDGEBOT_WORKDIR || path.join(process.cwd(), "workspace")).trim();
-  return path.resolve(base, "projects");
+  return path.resolve(getWorkspaceRoot(), "projects");
 };
 
 export const normalizeProjectName = (projectName: string) =>
@@ -23,7 +26,7 @@ export const normalizeProjectName = (projectName: string) =>
     .replace(/^-+|-+$/g, "") || "general";
 
 const resolveSafePath = (requestedPath: string) => {
-  const workspaceRoot = process.cwd();
+  const workspaceRoot = path.resolve(getWorkspaceRoot());
   const resolvedPath = path.resolve(workspaceRoot, requestedPath);
   const workspaceRootWithSep = `${workspaceRoot}${path.sep}`;
 
@@ -551,7 +554,7 @@ export const saveNoteTool = createTool({
         timestamp: Date.now(),
       });
 
-      const ok = await (mgr as any).putFile(filePath, markdown, `Save note: ${title}`);
+      const ok = await mgr.putFile(filePath, markdown, `Save note: ${title}`);
       return ok ? `Note "${title}" saved to GitHub (${filePath}).` : `Note "${title}" saved locally only (failed to sync to GitHub).`;
     } catch (e: any) {
       return `Failed to save note: ${e.message}`;
@@ -624,15 +627,8 @@ export const readNoteTool = createTool({
         return cached.content;
       }
 
-      const baseUrl = (mgr as any).baseUrl as string;
-      const headers = (mgr as any).headers as Record<string, string>;
-
-      const res = await fetch(`${baseUrl}/contents/notes/${slug}.md`, { headers });
-      if (res.status === 404) return `Note "${title}" not found.`;
-      if (!res.ok) return `Failed to read note: ${res.status}`;
-
-      const data = (await res.json()) as { content: string };
-      const content = Buffer.from(data.content, "base64").toString("utf-8");
+      const content = await mgr.getFile(`notes/${slug}.md`);
+      if (!content) return `Note "${title}" not found.`;
 
       // Save to cache for subsequent reads
       notesCache.set(slug, {
