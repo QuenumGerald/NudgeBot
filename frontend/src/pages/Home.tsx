@@ -229,30 +229,28 @@ export default function Home() {
       setIsListening(true);
     };
 
-    // FIX BUG Répétition Speech-to-Text:
-    // 1. On garde l'index du dernier résultat traité (lastProcessedIndex) pour ne lire QUE les nouveaux résultats (évite de relire tout l'historique event.results depuis le début).
-    // 2. On utilise le callback setInput(prev => ...) pour se baser sur la valeur *actuelle* du champ de saisie, au lieu de capturer une closure figée de "input" au moment du clic.
-    let lastProcessedIndex = -1;
-    let lastProcessedTranscript = '';
+    // const isAndroid = /Android/i.test(navigator.userAgent);
+    let lastFinalTranscript = '';
 
     recognition.onresult = (event: any) => {
-      let finalTranscript = '';
+      // Sur Android (Chrome Blink), un bug fait que les événements 'result' peuvent émettre le même résultat final plusieurs fois
+      // Au lieu de se baser sur un index, on traite uniquement le DERNIER résultat final (isFinal) et on le compare au dernier transcript ajouté
+      let currentFinalTranscript = '';
 
-      for (let i = lastProcessedIndex + 1; i < event.results.length; i++) {
+      // On cherche en partant de la fin le dernier résultat "final"
+      for (let i = event.results.length - 1; i >= 0; i--) {
         if (event.results[i].isFinal) {
-          const transcript = event.results[i][0].transcript;
-
-          // Dédoublonnage : éviter de répéter le même résultat consécutif (bug du Speech API)
-          if (transcript.trim().toLowerCase() !== lastProcessedTranscript.trim().toLowerCase()) {
-            finalTranscript += transcript;
-            lastProcessedTranscript = transcript;
-          }
-          lastProcessedIndex = i; // On met à jour l'index pour ne pas re-traiter ce résultat au prochain onresult
+          currentFinalTranscript = event.results[i][0].transcript;
+          break;
         }
       }
 
-      if (finalTranscript) {
-        setInput(prev => prev + (prev && !prev.endsWith(' ') ? ' ' : '') + finalTranscript);
+      if (currentFinalTranscript) {
+        // Dédoublonnage : on vérifie que ce n'est pas le même que le précédent
+        if (currentFinalTranscript.trim().toLowerCase() !== lastFinalTranscript.trim().toLowerCase()) {
+          lastFinalTranscript = currentFinalTranscript;
+          setInput(prev => prev + (prev && !prev.endsWith(' ') ? ' ' : '') + currentFinalTranscript);
+        }
       }
     };
 
