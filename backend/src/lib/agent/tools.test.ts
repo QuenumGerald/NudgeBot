@@ -55,8 +55,7 @@ describe('Agent Tools', () => {
         it('should require JULES_API_KEY when missing', async () => {
             const original = process.env.JULES_API_KEY;
             delete process.env.JULES_API_KEY;
-            const result = await listJulesSourcesTool.execute!({} as any);
-            expect(result).toContain('JULES_API_KEY is missing');
+            await expect(listJulesSourcesTool.execute!({} as any)).rejects.toThrow('JULES_API_KEY is missing');
             if (original) process.env.JULES_API_KEY = original;
         });
     });

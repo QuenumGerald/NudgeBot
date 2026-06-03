@@ -1,4 +1,30 @@
-import { createTool } from "@mastra/core/tools";
+import { createTool as __originalCreateTool } from "@mastra/core/tools";
+import type { ZodSchema } from "zod";
+
+function createTool<T extends ZodSchema>(options: {
+  id: string;
+  description: string;
+  inputSchema: T;
+  execute: (params: z.infer<T>) => Promise<any> | any;
+}) {
+  const originalExecute = options.execute;
+  const wrappedExecute = async (params: z.infer<T>) => {
+    console.log(`[Tool Logger] Outil ${options.id} appelé avec paramètres:`, params);
+    try {
+      const result = await originalExecute(params);
+      console.log(`[Tool Logger] Outil ${options.id} terminé avec résultat:`, typeof result === 'string' && result.length > 200 ? result.substring(0, 200) + '...' : result);
+      return result;
+    } catch (e: any) {
+      console.error(`[Tool Logger] Outil ${options.id} a échoué avec erreur:`, e.message);
+      throw e;
+    }
+  };
+  return __originalCreateTool({
+    ...options,
+    execute: wrappedExecute
+  });
+}
+
 import { z } from "zod";
 import path from "path";
 import { promises as fs } from "fs";
@@ -55,7 +81,7 @@ export const createProjectWorkspaceTool = createTool({
       await fs.mkdir(projectDir, { recursive: true });
       return `Project workspace ready: ${projectDir}`;
     } catch (e: any) {
-      return `Failed to create project workspace: ${e.message}`;
+      throw new Error(`Failed to create project workspace: ${e.message}`);
     }
   },
 });
@@ -115,7 +141,7 @@ export const createSchedulingTools = () => {
         jobs.start();
 
         if (actionType === "email") {
-          if (!recipientEmail || !subject || !body) return "Missing recipientEmail, subject, or body for email action.";
+          if (!recipientEmail || !subject || !body) throw new Error("Missing recipientEmail, subject, or body for email action.");
           const store = await getStore();
           const created = await store.createNotification(1, {
             recipient_email: recipientEmail,
@@ -141,14 +167,14 @@ export const createSchedulingTools = () => {
 
         switch (actionType) {
           case "command":
-            if (!command) return "Missing command for command action.";
+            if (!command) throw new Error("Missing command for command action.");
             taskFn = async () => {
               const { stdout, stderr } = await exec(command, { timeout: 30_000, maxBuffer: 1024 * 1024 });
               console.log(`[task:command] '${taskName}' output:`, stdout, stderr || "");
             };
             break;
           case "http":
-            if (!url) return "Missing url for http action.";
+            if (!url) throw new Error("Missing url for http action.");
             taskFn = async () => {
               const method = (httpMethod || "POST").toUpperCase();
               const headers = httpHeaders ? JSON.parse(httpHeaders) : { "Content-Type": "application/json" };
@@ -179,7 +205,7 @@ export const createSchedulingTools = () => {
 
         return `System task '${taskName}' scheduled (id: ${taskId}, ${actionType}, ${type}).`;
       } catch (e: any) {
-        return `Failed to schedule task: ${e.message}`;
+        throw new Error(`Failed to schedule task: ${e.message}`);
       }
     },
   });
@@ -216,7 +242,7 @@ export const createSchedulingTools = () => {
 
         return result;
       } catch (e: any) {
-        return `Failed to list tasks: ${e.message}`;
+        throw new Error(`Failed to list tasks: ${e.message}`);
       }
     },
   });
@@ -242,7 +268,7 @@ export const createSchedulingTools = () => {
         jobs.deleteTask(taskId);
         return `System task #${taskId} deleted successfully.`;
       } catch (e: any) {
-        return `Failed to cancel task: ${e.message}`;
+        throw new Error(`Failed to cancel task: ${e.message}`);
       }
     },
   });
@@ -268,7 +294,7 @@ export const createFileTool = createTool({
 
       return `File ${mode === "append" ? "updated" : "created"} successfully at: ${filePath}`;
     } catch (e: any) {
-      return `Failed to create/update file: ${e.message}`;
+      throw new Error(`Failed to create/update file: ${e.message}`);
     }
   },
 });
@@ -285,7 +311,7 @@ export const readFileTool = createTool({
       const content = await fs.readFile(resolvedPath, "utf8");
       return content;
     } catch (e: any) {
-      return `Failed to read file: ${e.message}`;
+      throw new Error(`Failed to read file: ${e.message}`);
     }
   },
 });
@@ -302,7 +328,7 @@ export const listDirectoryTool = createTool({
       const items = await fs.readdir(resolvedPath, { withFileTypes: true });
       return items.map((item) => `${item.isDirectory() ? "[DIR]" : "[FILE]"} ${item.name}`).join("\n");
     } catch (e: any) {
-      return `Failed to list directory: ${e.message}`;
+      throw new Error(`Failed to list directory: ${e.message}`);
     }
   },
 });
@@ -319,7 +345,7 @@ export const deleteFileTool = createTool({
       await fs.unlink(resolvedPath);
       return `File deleted successfully: ${filePath}`;
     } catch (e: any) {
-      return `Failed to delete file: ${e.message}`;
+      throw new Error(`Failed to delete file: ${e.message}`);
     }
   },
 });
@@ -339,12 +365,12 @@ export const executeCommandTool = createTool({
       });
 
       if (stderr && !stdout) {
-        return `Command completed with stderr:\n${stderr}`;
+        throw new Error(`Command completed with stderr:\n${stderr}`);
       }
 
       return `Command output:\n${stdout}${stderr ? `\nStderr:\n${stderr}` : ""}`;
     } catch (e: any) {
-      return `Failed to execute command: ${e.message}`;
+      throw new Error(`Failed to execute command: ${e.message}`);
     }
   },
 });
@@ -360,7 +386,7 @@ export const julesSessionTool = createTool({
   }),
   execute: async ({ prompt, githubRepository, baseBranch, autoPr }) => {
     if (!process.env.JULES_API_KEY) {
-      return "JULES_API_KEY is missing. Configure it before using this tool.";
+      throw new Error("JULES_API_KEY is missing. Configure it before using this tool.");
     }
 
     try {
@@ -377,9 +403,9 @@ export const julesSessionTool = createTool({
     } catch (e: any) {
       const errorCode = e?.code;
       if (errorCode === "ERR_MODULE_NOT_FOUND" || /@google\/jules-sdk/.test(e?.message || "")) {
-        return "Failed to run Jules session: missing dependency @google/jules-sdk. Install backend dependencies with `npm install` in /backend.";
+        throw new Error("Failed to run Jules session: missing dependency @google/jules-sdk. Install backend dependencies with `npm install` in /backend.");
       }
-      return `Failed to run Jules session: ${e.message}`;
+      throw new Error(`Failed to run Jules session: ${e.message}`);
     }
   },
 });
@@ -393,7 +419,7 @@ export const listJulesSourcesTool = createTool({
   }),
   execute: async ({ pageSize, pageToken }) => {
     if (!process.env.JULES_API_KEY) {
-      return "JULES_API_KEY is missing. Configure it before using this tool.";
+      throw new Error("JULES_API_KEY is missing. Configure it before using this tool.");
     }
 
     try {
@@ -411,7 +437,7 @@ export const listJulesSourcesTool = createTool({
 
       const bodyText = await res.text();
       if (!res.ok) {
-        return `Failed to list Jules sources (${res.status} ${res.statusText}): ${bodyText}`;
+        throw new Error(`Failed to list Jules sources (${res.status} ${res.statusText}): ${bodyText}`);
       }
 
       try {
@@ -421,7 +447,7 @@ export const listJulesSourcesTool = createTool({
         return bodyText;
       }
     } catch (e: any) {
-      return `Failed to list Jules sources: ${e.message}`;
+      throw new Error(`Failed to list Jules sources: ${e.message}`);
     }
   },
 });
@@ -435,7 +461,7 @@ export const listJulesSessionsTool = createTool({
   }),
   execute: async ({ pageSize, pageToken }) => {
     if (!process.env.JULES_API_KEY) {
-      return "JULES_API_KEY is missing. Configure it before using this tool.";
+      throw new Error("JULES_API_KEY is missing. Configure it before using this tool.");
     }
 
     try {
@@ -453,7 +479,7 @@ export const listJulesSessionsTool = createTool({
 
       const bodyText = await res.text();
       if (!res.ok) {
-        return `Failed to list Jules sessions (${res.status} ${res.statusText}): ${bodyText}`;
+        throw new Error(`Failed to list Jules sessions (${res.status} ${res.statusText}): ${bodyText}`);
       }
 
       try {
@@ -463,7 +489,7 @@ export const listJulesSessionsTool = createTool({
         return bodyText;
       }
     } catch (e: any) {
-      return `Failed to list Jules sessions: ${e.message}`;
+      throw new Error(`Failed to list Jules sessions: ${e.message}`);
     }
   },
 });
@@ -486,7 +512,7 @@ export const webFetchTool = createTool({
       });
       clearTimeout(timeout);
 
-      if (!res.ok) return `HTTP ${res.status}: ${res.statusText}`;
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
 
       const contentType = res.headers.get("content-type") || "";
       if (contentType.includes("application/json")) {
@@ -502,7 +528,7 @@ export const webFetchTool = createTool({
         .trim();
       return cleaned.slice(0, 8000);
     } catch (e: any) {
-      return `Failed to fetch URL: ${e.message}`;
+      throw new Error(`Failed to fetch URL: ${e.message}`);
     }
   },
 });
@@ -520,7 +546,7 @@ export const sendEmailTool = createTool({
     const fromEmail = (process.env.RESEND_FROM_EMAIL || "").trim();
 
     if (!apiKey || !fromEmail) {
-      return "Email not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.";
+      throw new Error("Email not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.");
     }
 
     try {
@@ -541,12 +567,12 @@ export const sendEmailTool = createTool({
 
       if (!res.ok) {
         const err = await res.text();
-        return `Failed to send email: ${res.status} ${err}`;
+        throw new Error(`Failed to send email: ${res.status} ${err}`);
       }
 
       return `Email sent to ${to} with subject "${subject}".`;
     } catch (e: any) {
-      return `Failed to send email: ${e.message}`;
+      throw new Error(`Failed to send email: ${e.message}`);
     }
   },
 });
@@ -564,7 +590,7 @@ export const getDateTimeTool = createTool({
       const formatted = now.toLocaleString("fr-FR", { timeZone: tz, dateStyle: "full", timeStyle: "long" });
       return `${formatted} (${tz})\nISO: ${now.toISOString()}\nTimestamp: ${now.getTime()}`;
     } catch (e: any) {
-      return `Failed to get date/time: ${e.message}`;
+      throw new Error(`Failed to get date/time: ${e.message}`);
     }
   },
 });
@@ -583,7 +609,7 @@ export const saveNoteTool = createTool({
     try {
       const { getGitHubContextManager } = await import("../githubContextManager.js");
       const mgr = getGitHubContextManager();
-      if (!mgr) return "GitHub context not configured. Note saved locally only.";
+      if (!mgr) throw new Error("GitHub context not configured.");
 
       const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       const filePath = `notes/${slug}.md`;
@@ -598,7 +624,7 @@ export const saveNoteTool = createTool({
       const ok = await mgr.putFile(filePath, markdown, `Save note: ${title}`);
       return ok ? `Note "${title}" saved to GitHub (${filePath}).` : `Note "${title}" saved locally only (failed to sync to GitHub).`;
     } catch (e: any) {
-      return `Failed to save note: ${e.message}`;
+      throw new Error(`Failed to save note: ${e.message}`);
     }
   },
 });
@@ -611,7 +637,7 @@ export const listNotesTool = createTool({
     try {
       const { getGitHubContextManager } = await import("../githubContextManager.js");
       const mgr = getGitHubContextManager();
-      if (!mgr) return "GitHub context not configured.";
+      if (!mgr) throw new Error("GitHub context not configured.");
 
       const baseUrl = (mgr as any).baseUrl as string;
       const headers = (mgr as any).headers as Record<string, string>;
@@ -643,7 +669,7 @@ export const listNotesTool = createTool({
 
       return mergedFiles.map((f) => `- ${f.name} (${f.size} bytes)`).join("\n");
     } catch (e: any) {
-      return `Failed to list notes: ${e.message}`;
+      throw new Error(`Failed to list notes: ${e.message}`);
     }
   },
 });
@@ -658,7 +684,7 @@ export const readNoteTool = createTool({
     try {
       const { getGitHubContextManager } = await import("../githubContextManager.js");
       const mgr = getGitHubContextManager();
-      if (!mgr) return "GitHub context not configured.";
+      if (!mgr) throw new Error("GitHub context not configured.");
 
       const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -669,7 +695,7 @@ export const readNoteTool = createTool({
       }
 
       const content = await mgr.getFile(`notes/${slug}.md`);
-      if (!content) return `Note "${title}" not found.`;
+      if (!content) throw new Error(`Note "${title}" not found.`);
 
       // Save to cache for subsequent reads
       notesCache.set(slug, {
@@ -679,7 +705,7 @@ export const readNoteTool = createTool({
 
       return content;
     } catch (e: any) {
-      return `Failed to read note: ${e.message}`;
+      throw new Error(`Failed to read note: ${e.message}`);
     }
   },
 });
@@ -695,15 +721,16 @@ export const syncToWorkspaceTool = createTool({
     try {
       const { getGitHubWorkspaceManager } = await import("../githubContextManager.js");
       const mgr = getGitHubWorkspaceManager();
-      if (!mgr) return "Workspace GitHub repo not configured. Please set GITHUB_WORKSPACE_REPO.";
+      if (!mgr) throw new Error("Workspace GitHub repo not configured. Please set GITHUB_WORKSPACE_REPO.");
 
       const resolvedPath = resolveSafePath(filePath);
       const content = await fs.readFile(resolvedPath, "utf8");
 
       const ok = await mgr.putFile(filePath, content, message || `Sync file: ${filePath}`);
-      return ok ? `File '${filePath}' successfully synced to GitHub workspace repository (${mgr.repo}).` : `Failed to sync '${filePath}' to GitHub.`;
+      if (!ok) throw new Error(`Failed to sync \`${filePath}\` to GitHub.`);
+      return `File \`${filePath}\` successfully synced to GitHub workspace repository (${mgr.repo}).`;
     } catch (e: any) {
-      return `Error during sync: ${e.message}`;
+      throw new Error(`Error during sync: ${e.message}`);
     }
   },
 });
