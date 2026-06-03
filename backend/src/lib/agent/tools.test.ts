@@ -47,6 +47,18 @@ describe('Agent Tools', () => {
             if (parsed.success) {
                 expect(parsed.data.prompt).toBe('Hello world');
                 expect(parsed.data.githubRepository).toBeUndefined();
+                expect(parsed.data.requireApproval).toBe(false);
+            }
+        });
+
+        it('should accept custom requireApproval values', () => {
+            const parsed = julesSessionTool.inputSchema.safeParse({
+                prompt: 'Hello world',
+                requireApproval: true
+            });
+            expect(parsed.success).toBe(true);
+            if (parsed.success) {
+                expect(parsed.data.requireApproval).toBe(true);
             }
         });
     });

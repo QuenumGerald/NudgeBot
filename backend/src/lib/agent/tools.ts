@@ -383,15 +383,16 @@ export const julesSessionTool = createTool({
     githubRepository: z.string().optional().describe("GitHub repository in owner/repo format."),
     baseBranch: z.string().optional().describe("Base branch for Jules work."),
     autoPr: z.boolean().default(true).describe("Whether Jules should automatically create a pull request."),
+    requireApproval: z.boolean().default(false).describe("Whether Jules should pause and wait for plan approval. Set to false (default) to run immediately (start mode)."),
   }),
-  execute: async ({ prompt, githubRepository, baseBranch, autoPr }) => {
+  execute: async ({ prompt, githubRepository, baseBranch, autoPr, requireApproval }) => {
     if (!process.env.JULES_API_KEY) {
       throw new Error("JULES_API_KEY is missing. Configure it before using this tool.");
     }
 
     try {
       const { jules } = await import("@google/jules-sdk");
-      const sessionConfig: any = { prompt, autoPr };
+      const sessionConfig: any = { prompt, autoPr, requireApproval };
 
       if (githubRepository) {
         sessionConfig.source = { github: githubRepository, baseBranch: baseBranch || "main" };
