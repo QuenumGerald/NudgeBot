@@ -36,7 +36,7 @@ const getAgentMaxSteps = (): number => {
   const parsedLimit = Number.parseInt(rawLimit, 10);
 
   if (!Number.isFinite(parsedLimit) || parsedLimit < 1) {
-    return 200;
+    return 15; // Reduced default to prevent infinite tool loops
   }
 
   return parsedLimit;
@@ -109,6 +109,12 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   (res as any).flushHeaders?.();
+
+  const controller = new AbortController();
+  req.on('close', () => {
+    controller.abort();
+    console.log('[chat] request closed by client, aborting generation');
+  });
 
   try {
     res.write(`data: ${JSON.stringify({ type: 'thinking' })}\n\n`);
@@ -186,11 +192,14 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
     }));
 
     const maxSteps = getAgentMaxSteps();
-    const result = await agent.stream(agentMessages, { maxSteps });
+    const result = await agent.stream(agentMessages, { maxSteps, runId: `req-${Date.now()}` });
 
     let content = '';
 
     for await (const chunk of result.fullStream) {
+      if (controller.signal.aborted) {
+        break;
+      }
       if (chunk.type === 'text-delta') {
         const text = chunk.payload.text || '';
         content += text;

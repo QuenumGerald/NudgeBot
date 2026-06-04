@@ -95,6 +95,9 @@ ${Object.keys(mcpTools).length > 0 ? `- MCP : ${enabledIntegrations.join(", ")} 
 Utilise les outils de manière proactive. La persistance sur GitHub est ta priorité absolue.
 Quand une demande concerne Jules ou les outils, explique brièvement à quoi sert chaque outil que tu utilises.
 
+### 💡 Efficacité et Frugalité
+Sois concis. Ne génère pas de longs blocs de code ou de texte à moins que ce ne soit explicitement demandé ou absolument nécessaire. Résume tes actions d'outils en une seule phrase courte pour économiser des tokens de complétion.
+
 ### 📚 Catalogue exact des outils chargés (à utiliser pour lister les outils)
 ${toolCatalog || "- Aucun outil chargé."}
 
