@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Brain, LogOut, Settings as SettingsIcon, Send, Moon, Sun, Wrench, X, Zap, Mic, Copy, Check, Menu, Plus } from 'lucide-react';
+import { Brain, LogOut, Settings as SettingsIcon, Send, Moon, Sun, Wrench, X, Zap, Mic, Copy, Check, Menu, Plus, ChevronDown, ChevronRight, Copy as CopyIcon } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -69,7 +69,38 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
 };
 
 
-const MarkdownRenderer = ({ content }: { content: string }) => {
+const ToolExecutionLog = ({ tool }: { tool: ToolCall }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="bg-muted/50 border border-border p-3 rounded-xl text-sm text-muted-foreground w-full max-w-fit">
+      <div
+        className="flex items-center space-x-2 font-mono text-xs text-primary cursor-pointer hover:underline"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <Wrench className="w-3 h-3" />
+        <span>{tool.name}</span>
+        {isOpen ? <ChevronDown className="w-3 h-3 ml-2" /> : <ChevronRight className="w-3 h-3 ml-2" />}
+      </div>
+
+      {isOpen && (
+        <div className="mt-2 pl-4 border-l border-border/50">
+          <div className="font-mono text-xs opacity-80 mb-2 whitespace-pre-wrap break-all">
+            <span className="font-semibold">Input:</span> {JSON.stringify(tool.input, null, 2)}
+          </div>
+          {tool.result != null && (
+            <div className="font-mono text-xs mt-2 border-t border-border/50 pt-2 opacity-80 whitespace-pre-wrap break-all">
+              <span className="font-semibold">Result:</span> {typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+const MarkdownRenderer = React.memo(({ content }: { content: string }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const isLong = content.length > 1500;
 
@@ -118,7 +149,7 @@ const MarkdownRenderer = ({ content }: { content: string }) => {
       )}
     </div>
   );
-};
+});
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -551,38 +582,41 @@ export default function Home() {
                 {msg.role === 'assistant' && msg.tools && msg.tools.length > 0 && (
                   <div className="flex flex-col space-y-2 mb-2 w-full max-w-3xl">
                     {msg.tools.map((tool, tIdx) => (
-                      <div key={tIdx} className="bg-muted/50 border border-border p-3 rounded-xl text-sm text-muted-foreground max-w-fit">
-                        <div className="flex items-center space-x-2 font-mono text-xs text-primary mb-1">
-                          <Wrench className="w-3 h-3" />
-                          <span>{tool.name}</span>
-                        </div>
-                        <div className="font-mono text-xs opacity-80">
-                          Input: {JSON.stringify(tool.input)}
-                        </div>
-                        {tool.result != null && (
-                          <div className="font-mono text-xs mt-2 border-t border-border/50 pt-2 opacity-80">
-                            Result: {JSON.stringify(tool.result).slice(0, 100)}{JSON.stringify(tool.result).length > 100 ? '...' : ''}
-                          </div>
-                        )}
-                      </div>
+                      <ToolExecutionLog key={tIdx} tool={tool} />
                     ))}
                   </div>
                 )}
 
                 {msg.content && (
-                  <div className={`max-w-[90%] md:max-w-3xl p-4 rounded-xl shadow-sm ${msg.role === 'user'
+                  <div className={`max-w-[90%] md:max-w-3xl rounded-xl shadow-sm group relative ${msg.role === 'user'
                     ? 'bg-primary text-primary-foreground rounded-br-none whitespace-pre-wrap'
                     : 'bg-card border border-border text-foreground rounded-bl-none'
                     }`}>
-                    {msg.role === 'assistant' ? (
-                      <div className="prose dark:prose-invert max-w-none text-sm break-words prose-p:text-foreground/90 prose-headings:text-foreground prose-strong:text-foreground prose-li:text-foreground/90 prose-td:text-foreground/90">
-                        <MarkdownRenderer content={msg.content} />
-                      </div>
-                    ) : (
-                      <div className="text-sm break-words whitespace-pre-wrap">
-                        {msg.content}
+                    {msg.role === 'assistant' && (
+                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(msg.content);
+                            // Optional: add a small toast/feedback here
+                          }}
+                          className="p-1.5 bg-muted/80 hover:bg-muted text-muted-foreground hover:text-foreground rounded-md shadow-sm border border-border/50 backdrop-blur-sm transition-all flex items-center justify-center"
+                          title="Copier le message"
+                        >
+                          <CopyIcon className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     )}
+                    <div className="p-4">
+                      {msg.role === 'assistant' ? (
+                        <div className="prose dark:prose-invert max-w-none text-sm break-words prose-p:text-foreground/90 prose-headings:text-foreground prose-strong:text-foreground prose-li:text-foreground/90 prose-td:text-foreground/90">
+                          <MarkdownRenderer content={msg.content} />
+                        </div>
+                      ) : (
+                        <div className="text-sm break-words whitespace-pre-wrap">
+                          {msg.content}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

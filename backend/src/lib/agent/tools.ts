@@ -497,6 +497,71 @@ export const listJulesSessionsTool = createTool({
 
 // ── Web / Utility tools ───────────────────────────────────────────────────────
 
+export const webSearchTool = createTool({
+  id: "web_search",
+  description: "Searches the web using DuckDuckGo and returns a list of relevant search results with URLs, titles, and snippets. Useful for finding current information.",
+  inputSchema: z.object({
+    query: z.string().describe("The search query."),
+  }),
+  execute: async ({ query }) => {
+    try {
+      const url = "https://html.duckduckgo.com/html/";
+      const formData = new URLSearchParams();
+      formData.append("q", query);
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(url, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      });
+      clearTimeout(timeout);
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+
+      const html = await res.text();
+      const { load } = await import("cheerio");
+      const $ = load(html);
+      const results: { title: string; url: string; snippet: string }[] = [];
+
+      $(".result").each((_, element) => {
+        const title = $(element).find(".result__title").text().trim();
+        const url = $(element).find(".result__url").attr("href")?.trim() || "";
+        const snippet = $(element).find(".result__snippet").text().trim();
+
+        if (title && url) {
+          // DDG sometimes prefixes urls with their redirector
+          let finalUrl = url;
+          if (url.startsWith("//duckduckgo.com/l/?uddg=")) {
+            try {
+              const urlObj = new URL("https:" + url);
+              const uddg = urlObj.searchParams.get("uddg");
+              if (uddg) finalUrl = decodeURIComponent(uddg);
+            } catch (e) {
+              // ignore
+            }
+          }
+
+          results.push({ title, url: finalUrl, snippet });
+        }
+      });
+
+      if (results.length === 0) {
+        return "No results found.";
+      }
+
+      return results.map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.snippet}\n`).join("\n").slice(0, 8000);
+    } catch (e: any) {
+      throw new Error(`Failed to perform web search: ${e.message}`);
+    }
+  },
+});
+
 export const webFetchTool = createTool({
   id: "web_fetch",
   description: "Fetches the content of a URL and returns the text (HTML tags stripped). Useful for reading web pages, APIs, documentation.",
@@ -750,6 +815,7 @@ export const staticTools = [
   // Shell
   executeCommandTool,
   // Web
+  webSearchTool,
   webFetchTool,
   // Email
   sendEmailTool,
