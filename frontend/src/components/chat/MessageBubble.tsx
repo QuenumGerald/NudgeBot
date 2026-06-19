@@ -49,7 +49,7 @@ const CodeBlock = ({ inline, className, children, ...props }: React.ComponentPro
     );
   }
   return (
-    <code className="bg-muted px-1.5 py-0.5 rounded-md text-sm font-mono text-primary mx-0.5" {...props}>
+    <code className="bg-muted/70 px-1.5 py-0.5 rounded text-[13px] font-mono text-foreground border border-border/40 mx-0.5" {...props}>
       {children}
     </code>
   );
@@ -140,7 +140,7 @@ export function MessageBubble({ message }: { message: Message }) {
   };
 
   return (
-    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-6 w-full`}>
+    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-6 w-full animate-fade-in-up`}>
       {message.role === 'assistant' && message.tools && message.tools.length > 0 && (
         <div className="flex flex-col w-full max-w-3xl">
           {message.tools.map((tool, tIdx) => (

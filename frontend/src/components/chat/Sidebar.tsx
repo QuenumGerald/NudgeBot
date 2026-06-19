@@ -47,6 +47,16 @@ export function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen, handleNewConver
       </div>
 
       <div className="p-3 border-t border-border space-y-1 bg-card/50">
+        <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground border-b border-border/50 mb-2 pb-2">
+          <span className="flex items-center gap-1.5 font-medium">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            GitHub Sync
+          </span>
+          <span className="font-semibold text-emerald-600 dark:text-emerald-400 select-none">Connected</span>
+        </div>
         <Button variant="ghost" className="w-full justify-start gap-2 text-sm font-medium h-10" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
           {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}

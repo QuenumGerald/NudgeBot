@@ -46,6 +46,62 @@ type ChatBody = {
   messages?: Array<{ role?: string; content?: string }>;
 };
 
+async function generateIntelligentSummary(
+  droppedMessages: Array<{ role: string; content: string }>,
+  provider: string,
+  model: string,
+  apiKey: string
+): Promise<string> {
+  const conversationText = droppedMessages
+    .map((m) => `${m.role === 'assistant' ? 'Assistant' : 'Utilisateur'}: ${m.content}`)
+    .join('\n');
+
+  const systemPrompt = `Tu es un assistant chargé de résumer les anciens messages d'une conversation pour ne pas perdre le contexte.
+Rédige un résumé condensé, précis et structuré (en quelques puces) des faits importants, décisions, et sujets abordés dans la conversation ci-dessous.
+Sois extrêmement concis et direct. Écris en français.`;
+
+  let baseURL = 'https://api.openai.com/v1';
+  let modelName = model || 'gpt-4o-mini';
+
+  if (provider === 'deepseek') {
+    const rawBase = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').trim();
+    baseURL = rawBase.replace(/\/+$/, '') + '/v1';
+    modelName = model || 'deepseek-chat';
+  } else if (provider === 'openrouter') {
+    baseURL = 'https://openrouter.ai/api/v1';
+    modelName = model || 'deepseek/deepseek-chat:free';
+  }
+
+  try {
+    const res = await fetch(`${baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: conversationText }
+        ],
+        temperature: 0.3,
+        max_tokens: 500,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    }
+
+    const data = await res.json() as any;
+    return data.choices?.[0]?.message?.content || '';
+  } catch (err) {
+    console.error('[contextBudget] Intelligent summary failed, falling back to basic summary:', err);
+    return '';
+  }
+}
+
 
 router.get('/history', async (req: AuthenticatedRequest, res: ExpressResponse) => {
   const userId = req.user?.id;
@@ -183,6 +239,21 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
         estimatedTokens: contextBudget.estimatedTokens,
         droppedMessages: contextBudget.droppedMessages,
       });
+      if (contextBudget.droppedMessages > 0) {
+        try {
+          const dropped = messages.slice(0, contextBudget.droppedMessages).map((m) => ({
+            role: m.role || 'user',
+            content: m.content || '',
+          }));
+          const intelligentSummary = await generateIntelligentSummary(dropped, provider, model, apiKey);
+          if (intelligentSummary && contextBudget.messages.length > 0 && contextBudget.messages[0].content.startsWith('[Contexte compressé]')) {
+            contextBudget.messages[0].content = `[Contexte compressé (Résumé IA)]\n${intelligentSummary}`;
+            console.log('[chat] prepended intelligent context summary successfully');
+          }
+        } catch (sumErr) {
+          console.error('[chat] failed to generate intelligent context summary:', sumErr);
+        }
+      }
     }
 
     // Convert to Mastra/AI SDK message format
