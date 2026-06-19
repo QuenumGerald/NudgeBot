@@ -12,3 +12,6 @@ frontend/dist
 *.sqlite-wal
 backend/.env
 frontend/.env
+history_*.json
+workspace/history_*.json
+

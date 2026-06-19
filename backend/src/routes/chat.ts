@@ -111,9 +111,9 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
   (res as any).flushHeaders?.();
 
   const controller = new AbortController();
-  req.on('close', () => {
+  res.on('close', () => {
     controller.abort();
-    console.log('[chat] request closed by client, aborting generation');
+    console.log('[chat] response connection closed');
   });
 
   try {
