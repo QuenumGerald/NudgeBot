@@ -1,5 +1,5 @@
 import React, { RefObject } from 'react';
-import { Wrench, Send, Menu } from 'lucide-react';
+import { Wrench, Send, Menu, Sparkles } from 'lucide-react';
 import { MessageBubble, Message } from './MessageBubble';
 import { MessageInput } from './MessageInput';
 import { Button } from '@/components/ui/button';
@@ -73,12 +73,16 @@ export function ChatArea({
         )}
 
         {isThinking && (
-          <div className="flex justify-start max-w-4xl mx-auto mt-6">
-            <div className="flex items-center gap-3 text-muted-foreground text-sm">
-              <div className="flex space-x-1.5 items-center justify-center w-8 h-8 rounded-full bg-card border border-border shadow-sm">
-                 <div className="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                 <div className="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                 <div className="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce"></div>
+          <div className="flex justify-start max-w-4xl mx-auto mt-6 animate-bounce-in">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg border border-border/80 flex items-center justify-center bg-foreground text-background shadow-sm animate-float hidden md:flex select-none">
+                <Sparkles className="w-4 h-4 animate-spin-slow" />
+              </div>
+              <div className="flex space-x-2 items-center justify-center px-4 py-2.5 rounded-2xl rounded-bl-sm bg-card border border-border/80 shadow-sm">
+                <span className="text-xs text-muted-foreground mr-1 font-semibold select-none">Thinking</span>
+                <div className="w-2 h-2 bg-foreground/30 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                <div className="w-2 h-2 bg-foreground/60 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                <div className="w-2 h-2 bg-foreground rounded-full animate-bounce"></div>
               </div>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Copy, Check, Wrench } from 'lucide-react';
+import { Copy, Check, Wrench, Sparkles } from 'lucide-react';
 import type { Components } from 'react-markdown';
 
 interface ToolCall {
@@ -140,7 +140,7 @@ export function MessageBubble({ message }: { message: Message }) {
   };
 
   return (
-    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-6 w-full animate-fade-in-up`}>
+    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-6 w-full animate-bounce-in`}>
       {message.role === 'assistant' && message.tools && message.tools.length > 0 && (
         <div className="flex flex-col w-full max-w-3xl">
           {message.tools.map((tool, tIdx) => (
@@ -162,8 +162,8 @@ export function MessageBubble({ message }: { message: Message }) {
                 `}
               >
                 {!isUser && (
-                  <div className="absolute -left-12 top-0 w-8 h-8 rounded-full border border-border flex items-center justify-center bg-card shadow-sm hidden md:flex">
-                     <img src="/logo.png" alt="Bot" className="w-5 h-5" />
+                  <div className="absolute -left-12 top-0 w-8 h-8 rounded-lg border border-border/80 flex items-center justify-center bg-foreground text-background shadow-sm hidden md:flex select-none">
+                     <Sparkles className="w-4 h-4" />
                   </div>
                 )}
 

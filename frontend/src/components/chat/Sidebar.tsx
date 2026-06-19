@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { LogOut, Settings as SettingsIcon, Plus, Moon, Sun, X } from 'lucide-react';
+import { LogOut, Settings as SettingsIcon, Plus, Moon, Sun, X, Sparkles } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import { useNavigate } from 'react-router-dom';
 
@@ -17,8 +17,10 @@ export function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen, handleNewConver
   const renderContent = () => (
     <>
       <div className="flex items-center justify-between p-4 border-b border-border md:pb-4 md:mb-4">
-        <div className="flex items-center space-x-2">
-          <img src="/logo.png" alt="NudgeBot" className="w-8 h-8" />
+        <div className="flex items-center space-x-2.5 group cursor-pointer select-none">
+          <div className="w-8 h-8 rounded-lg bg-foreground text-background flex items-center justify-center animate-float group-hover:scale-105 group-hover:rotate-6 transition-transform duration-300 ease-out">
+            <Sparkles className="w-4.5 h-4.5" />
+          </div>
           <span className="font-bold text-lg text-foreground tracking-tight">NudgeBot</span>
         </div>
         <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={() => setIsMobileMenuOpen(false)} aria-label="Close menu">
@@ -49,13 +51,13 @@ export function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen, handleNewConver
       <div className="p-3 border-t border-border space-y-1 bg-card/50">
         <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground border-b border-border/50 mb-2 pb-2">
           <span className="flex items-center gap-1.5 font-medium">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-foreground/30 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-foreground/60"></span>
             </span>
             GitHub Sync
           </span>
-          <span className="font-semibold text-emerald-600 dark:text-emerald-400 select-none">Connected</span>
+          <span className="font-medium text-foreground select-none">Synced</span>
         </div>
         <Button variant="ghost" className="w-full justify-start gap-2 text-sm font-medium h-10" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
           {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}

@@ -67,7 +67,7 @@ export function MessageInput({
         )}
       </div>
 
-      <div className="max-w-3xl mx-auto relative flex items-end shadow-md border border-border/80 rounded-2xl bg-card/90 backdrop-blur-xl focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 transition-all duration-200">
+      <div className="max-w-3xl mx-auto relative flex items-end shadow-md border border-border/80 rounded-2xl bg-card/90 backdrop-blur-xl focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 focus-within:shadow-[0_0_15px_rgba(0,0,0,0.04)] dark:focus-within:shadow-[0_0_15px_rgba(255,255,255,0.04)] transition-all duration-300">
         <Textarea
           value={input}
           onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
@@ -79,7 +79,7 @@ export function MessageInput({
         <div className="p-2 h-full flex items-end gap-1.5 shrink-0">
           <Button
             size="icon"
-            className={`rounded-xl h-10 w-10 transition-colors ${isListening ? 'bg-red-500 hover:bg-red-600 animate-pulse text-white' : 'bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+            className={`rounded-xl h-10 w-10 transition-all duration-200 hover:scale-105 active:scale-95 ${isListening ? 'bg-foreground text-background animate-pulse shadow-[0_0_12px_rgba(0,0,0,0.15)] dark:shadow-[0_0_12px_rgba(255,255,255,0.15)]' : 'bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground'}`}
             onClick={handleMicrophoneClick}
             title="Dictée vocale"
             variant="ghost"
@@ -88,7 +88,7 @@ export function MessageInput({
           </Button>
           <Button
             size="icon"
-            className={`rounded-xl h-10 w-10 transition-all duration-200 ${input.trim() ? 'bg-primary text-primary-foreground hover:opacity-90 shadow-sm scale-100' : 'bg-muted text-muted-foreground opacity-50 scale-95'}`}
+            className={`rounded-xl h-10 w-10 transition-all duration-200 ${input.trim() ? 'bg-primary text-primary-foreground hover:opacity-90 hover:scale-105 active:scale-95 shadow-sm' : 'bg-muted text-muted-foreground opacity-50 scale-95 pointer-events-none'}`}
             disabled={!input.trim()}
             onClick={enqueueMessage}
           >

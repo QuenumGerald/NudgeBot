@@ -34,6 +34,10 @@
   --radius-sm: calc(var(--radius) - 4px);
 
   --animate-fade-in-up: fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-bounce-in: bounceIn 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  --animate-float: float 4s ease-in-out infinite;
+  --animate-gradient-shift: gradientShift 6s ease infinite;
+  --animate-spin-slow: spin 8s linear infinite;
 
   @keyframes fadeInUp {
     from {
@@ -43,6 +47,38 @@
     to {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  @keyframes bounceIn {
+    0% {
+      opacity: 0;
+      transform: scale(0.92) translateY(10px);
+    }
+    70% {
+      transform: scale(1.015) translateY(-1px);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-6px);
+    }
+  }
+
+  @keyframes gradientShift {
+    0%, 100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
     }
   }
 }
