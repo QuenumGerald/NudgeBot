@@ -196,30 +196,35 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
 
     let content = '';
 
-    for await (const chunk of result.fullStream) {
+    for await (const rawChunk of result.fullStream) {
       if (controller.signal.aborted) {
         break;
       }
+
+      const chunk = rawChunk as any;
+      const payload = chunk.payload ?? chunk;
+
       if (chunk.type === 'text-delta') {
-        const text = chunk.payload.text || '';
+        const text = payload.text ?? payload.delta ?? '';
         content += text;
         res.write(`data: ${JSON.stringify({ type: 'delta', content: text })}\n\n`);
       } else if (chunk.type === 'tool-call') {
         res.write(`data: ${JSON.stringify({
           type: 'tool_start',
-          tool_name: chunk.payload.toolName,
-          input: chunk.payload.args
+          tool_name: payload.toolName,
+          input: payload.args ?? payload.input
         })}\n\n`);
       } else if (chunk.type === 'tool-result') {
         res.write(`data: ${JSON.stringify({
           type: 'tool_result',
-          tool_name: chunk.payload.toolName,
-          result: chunk.payload.result
+          tool_name: payload.toolName,
+          result: payload.result ?? payload.output
         })}\n\n`);
       } else if (chunk.type === 'error') {
+        const streamError = payload.error;
         res.write(`data: ${JSON.stringify({
           type: 'error',
-          error: chunk.payload.error instanceof Error ? chunk.payload.error.message : String(chunk.payload.error)
+          error: streamError instanceof Error ? streamError.message : String(streamError)
         })}\n\n`);
       }
     }
