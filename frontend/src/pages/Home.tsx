@@ -157,20 +157,30 @@ export default function Home() {
 
     recognitionRef.current = recognition;
 
-    let finalTranscriptTracker = "";
+    let lastFinalTranscript = '';
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let finalTranscript = '';
+      // Sur Android (Chrome Blink), un bug fait que les événements 'result'
+      // peuvent émettre le même résultat final plusieurs fois
+      // Au lieu de se baser sur un index, on traite uniquement le DERNIER
+      // résultat final (isFinal) et on le compare au dernier transcript ajouté
+      
+      let currentFinalTranscript = '';
 
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
+      // On cherche en partant de la fin le dernier résultat "final"
+      for (let i = event.results.length - 1; i >= 0; i--) {
         if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
+          currentFinalTranscript = event.results[i][0].transcript;
+          break;
         }
       }
 
-      if (finalTranscript && finalTranscript !== finalTranscriptTracker) {
-        finalTranscriptTracker = finalTranscript;
-        setInput(prev => prev + " " + finalTranscript);
+      if (currentFinalTranscript) {
+        // Dédoublonnage : on vérifie que ce n'est pas le même que le précédent
+        if (currentFinalTranscript.trim().toLowerCase() !== lastFinalTranscript.trim().toLowerCase()) {
+          lastFinalTranscript = currentFinalTranscript;
+          setInput(prev => prev + (prev && !prev.endsWith(' ') ? ' ' : '') + currentFinalTranscript);
+        }
       }
     };
 

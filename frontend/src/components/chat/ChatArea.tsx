@@ -42,7 +42,7 @@ export function ChatArea({
 }: ChatAreaProps) {
 
   return (
-    <div className="flex-1 flex flex-col relative max-w-full h-full bg-background md:bg-[#f3f3f3] dark:md:bg-[#212121]">
+    <div className="flex-1 flex flex-col relative max-w-full h-full bg-background">
 
       {/* Mobile Top Bar */}
       <div className="md:hidden sticky top-0 z-20 border-b border-border/40 bg-background/80 backdrop-blur-xl px-3 py-2.5">
