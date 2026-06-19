@@ -18,8 +18,8 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.62",
     "@google/jules-sdk": "^0.2.0",
-    "@mastra/core": "^1.32.1",
-    "@mastra/mcp": "^1.7.0",
+    "@mastra/core": "1.32.1",
+    "@mastra/mcp": "1.7.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
