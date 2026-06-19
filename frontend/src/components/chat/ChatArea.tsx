@@ -76,7 +76,7 @@ export function ChatArea({
           <div className="flex justify-start max-w-4xl mx-auto mt-6 animate-bounce-in">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg border border-border/80 flex items-center justify-center bg-card shadow-sm animate-float hidden md:flex select-none">
-                <img src="/logo.png" alt="Thinking Bot" className="w-5 h-5 grayscale contrast-125 animate-spin-slow" />
+                <img src="/logo.png" alt="Thinking Bot" className="w-5 h-5 animate-spin-slow" />
               </div>
               <div className="flex space-x-2 items-center justify-center px-4 py-2.5 rounded-2xl rounded-bl-sm bg-card border border-border/80 shadow-sm">
                 <span className="text-xs text-muted-foreground mr-1 font-semibold select-none">Thinking</span>

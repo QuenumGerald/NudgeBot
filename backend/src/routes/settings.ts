@@ -22,11 +22,16 @@ router.get('/:userId', async (req: AuthenticatedRequest, res) => {
         llm_provider: null,
         llm_model: null,
         llm_api_key: null,
-        enabled_integrations: '[]',
+        enabled_integrations: [],
       });
       return;
     }
-    res.json(settings);
+    res.json({
+      ...settings,
+      enabled_integrations: settings.enabled_integrations
+        ? JSON.parse(settings.enabled_integrations)
+        : [],
+    });
   } catch (error) {
     console.error('Fetch settings error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -57,7 +62,12 @@ router.post('/:userId', async (req: AuthenticatedRequest, res) => {
       invalidateMCPCache(String(userId));
     }
 
-    res.json(updated);
+    res.json({
+      ...updated,
+      enabled_integrations: updated.enabled_integrations
+        ? JSON.parse(updated.enabled_integrations)
+        : [],
+    });
   } catch (error) {
     console.error('Update settings error:', error);
     res.status(500).json({ error: 'Server error' });

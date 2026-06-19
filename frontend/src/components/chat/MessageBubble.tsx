@@ -156,14 +156,14 @@ export function MessageBubble({ message }: { message: Message }) {
                 className={`
                   relative px-5 py-4 rounded-2xl max-w-[85%] md:max-w-[75%]
                   ${isUser
-                    ? 'bg-[#1a1a1a] dark:bg-primary text-white dark:text-primary-foreground rounded-br-sm shadow-sm'
+                    ? 'bg-primary text-primary-foreground rounded-br-sm shadow-sm'
                     : 'bg-transparent text-foreground'
                   }
                 `}
               >
                 {!isUser && (
                   <div className="absolute -left-12 top-0 w-8 h-8 rounded-lg border border-border/80 flex items-center justify-center bg-card shadow-sm hidden md:flex select-none">
-                     <img src="/logo.png" alt="Bot" className="w-5 h-5 grayscale contrast-125" />
+                     <img src="/logo.png" alt="Bot" className="w-5 h-5" />
                   </div>
                 )}
 

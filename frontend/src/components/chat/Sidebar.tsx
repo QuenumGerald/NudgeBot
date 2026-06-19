@@ -18,7 +18,7 @@ export function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen, handleNewConver
     <>
       <div className="flex items-center justify-between p-4 border-b border-border md:pb-4 md:mb-4">
         <div className="flex items-center space-x-2.5 group cursor-pointer select-none">
-          <img src="/logo.png" alt="NudgeBot" className="w-8 h-8 grayscale contrast-125 animate-float group-hover:scale-105 group-hover:rotate-6 transition-transform duration-300 ease-out" />
+          <img src="/logo.png" alt="NudgeBot" className="w-8 h-8 animate-float group-hover:scale-105 group-hover:rotate-6 transition-transform duration-300 ease-out" />
           <span className="font-bold text-lg text-foreground tracking-tight">NudgeBot</span>
         </div>
         <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={() => setIsMobileMenuOpen(false)} aria-label="Close menu">
