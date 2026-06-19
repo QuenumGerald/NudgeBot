@@ -162,8 +162,8 @@ export function MessageBubble({ message }: { message: Message }) {
                 `}
               >
                 {!isUser && (
-                  <div className="absolute -left-12 top-0 w-8 h-8 rounded-lg border border-border/80 flex items-center justify-center bg-foreground text-background shadow-sm hidden md:flex select-none">
-                     <Sparkles className="w-4 h-4" />
+                  <div className="absolute -left-12 top-0 w-8 h-8 rounded-lg border border-border/80 flex items-center justify-center bg-card shadow-sm hidden md:flex select-none">
+                     <img src="/logo.png" alt="Bot" className="w-5 h-5 grayscale contrast-125" />
                   </div>
                 )}
 
