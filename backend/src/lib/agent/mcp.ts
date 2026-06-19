@@ -13,7 +13,7 @@ export const AVAILABLE_INTEGRATIONS = [
 export type IntegrationId = (typeof AVAILABLE_INTEGRATIONS)[number];
 
 type McpRuntime = {
-  client: MCPClient;
+  clients: MCPClient[];
   tools: Record<string, any>;
 };
 
@@ -21,6 +21,10 @@ type McpRuntime = {
 const mcpCache = new Map<string, Promise<McpRuntime | null>>();
 
 const toEnv = (value?: string) => (value ?? "").trim();
+
+const disconnectClients = async (clients: MCPClient[]): Promise<void> => {
+  await Promise.all(clients.map((client) => client.disconnect().catch(() => undefined)));
+};
 
 const parseGoogleCredentials = () => {
   const raw = toEnv(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
@@ -101,25 +105,36 @@ const initializeMCP = async (enabledIntegrations: string[], cacheKey: string): P
   if (enabledIntegrations.length === 0) return null;
 
   const allServers = ALL_SERVERS();
-  const servers = Object.fromEntries(
-    enabledIntegrations
-      .filter((id) => id in allServers)
-      .map((id) => [id, allServers[id as IntegrationId]])
-  );
+  const clients: MCPClient[] = [];
+  const tools: Record<string, any> = {};
 
-  if (Object.keys(servers).length === 0) return null;
+  for (const integrationId of enabledIntegrations) {
+    if (!(integrationId in allServers)) continue;
 
-  const client = new MCPClient({ id: cacheKey, servers });
+    const client = new MCPClient({
+      id: `${cacheKey}:${integrationId}`,
+      servers: {
+        [integrationId]: allServers[integrationId as IntegrationId],
+      },
+    });
 
-  try {
-    const tools = await client.listTools();
-    console.log(`[mcp] loaded ${Object.keys(tools).length} tool(s) for integrations: ${enabledIntegrations.join(", ")}`);
-    return { client, tools };
-  } catch (error) {
-    console.error("[mcp] MCP initialization failed, continuing without MCP tools.", error);
-    await client.disconnect().catch(() => undefined);
+    try {
+      const integrationTools = await client.listTools();
+      Object.assign(tools, integrationTools);
+      clients.push(client);
+      console.log(`[mcp] loaded ${Object.keys(integrationTools).length} tool(s) for integration: ${integrationId}`);
+    } catch (error) {
+      console.error(`[mcp] MCP initialization failed for integration '${integrationId}', continuing without it.`, error);
+      await client.disconnect().catch(() => undefined);
+    }
+  }
+
+  if (Object.keys(tools).length === 0) {
+    await disconnectClients(clients);
     return null;
   }
+
+  return { clients, tools };
 };
 
 export const setupMCP = async (
@@ -141,7 +156,7 @@ export const setupMCP = async (
 export const invalidateMCPCache = (userId: string): void => {
   for (const key of mcpCache.keys()) {
     if (key.startsWith(`${userId}:`)) {
-      mcpCache.get(key)?.then((r) => r?.client.disconnect().catch(() => undefined));
+      mcpCache.get(key)?.then((runtime) => disconnectClients(runtime?.clients ?? []));
       mcpCache.delete(key);
     }
   }
@@ -150,7 +165,7 @@ export const invalidateMCPCache = (userId: string): void => {
 export const closeMCP = async (): Promise<void> => {
   for (const [key, promise] of mcpCache.entries()) {
     const runtime = await promise;
-    await runtime?.client.disconnect().catch(() => undefined);
+    await disconnectClients(runtime?.clients ?? []);
     mcpCache.delete(key);
   }
 };
