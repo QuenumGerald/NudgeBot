@@ -107,6 +107,42 @@ a {
   color: var(--primary-color);
 }
 
+.cta-group {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.lang-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  padding: 0.35rem 0.65rem;
+  border-radius: 0.5rem;
+}
+
+.lang-btn {
+  color: var(--text-muted);
+  transition: color 0.2s ease;
+}
+
+.lang-btn:hover {
+  color: #fff;
+}
+
+.lang-btn.active {
+  color: var(--primary-color);
+}
+
+.lang-separator {
+  color: rgba(255, 255, 255, 0.15);
+  font-weight: 400;
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;
