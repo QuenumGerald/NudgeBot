@@ -54,17 +54,20 @@
       "frontend/dist/**/*"
     ],
     "linux": {
+      "icon": "build/icon.png",
       "target": [
         "AppImage",
         "deb"
       ]
     },
     "mac": {
+      "icon": "build/icon.png",
       "target": [
         "dmg"
       ]
     },
     "win": {
+      "icon": "build/icon.png",
       "target": [
         "nsis"
       ]
