@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - feature/promo-landing-page
+      - feature/desktop-app
+      - main
     paths:
       - 'promo/**'
   workflow_dispatch:
