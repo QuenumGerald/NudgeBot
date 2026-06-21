@@ -2,7 +2,7 @@
   "name": "nudgebot-monorepo",
   "version": "1.0.0",
   "description": "NudgeBot - Personal AI Assistant",
-  "author": "Quenum Gerald <gerald@example.com>",
+  "author": "Quenum Gerald <geraldquenum9@gmail.com>",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/QuenumGerald/NudgeBot.git"
