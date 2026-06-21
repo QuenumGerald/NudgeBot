@@ -21,7 +21,7 @@
     "uninstall": "node scripts/uninstall.mjs"
   },
   "devDependencies": {
-    "electron": "^42.4.1",
+    "electron": "^32.2.0",
     "electron-builder": "^25.1.8"
   },
   "dependencies": {
