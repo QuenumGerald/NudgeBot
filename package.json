@@ -1,6 +1,8 @@
 {
   "name": "nudgebot-monorepo",
   "version": "1.0.0",
+  "description": "NudgeBot - Personal AI Assistant",
+  "author": "Quenum Gerald <gerald@example.com>",
   "main": "desktop.js",
   "scripts": {
     "setup": "node scripts/setup.mjs",
