@@ -77,6 +77,28 @@ npm run dev
 
 App available at `http://localhost:3000`.
 
+### Clean uninstaller (macOS, Linux, Windows)
+
+To delete all installed dependencies, build folder artifacts, and your local `backend/.env` file to return the repository to a clean state, you can run the uninstaller.
+
+**macOS / Linux:**
+
+```bash
+./uninstall.sh
+```
+
+**Windows PowerShell:**
+
+```powershell
+.\uninstall.ps1
+```
+
+**Any platform with npm:**
+
+```bash
+npm run uninstall
+```
+
 ### Manual setup
 
 ```bash
