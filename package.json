@@ -2,6 +2,8 @@
   "name": "nudgebot-monorepo",
   "version": "1.0.0",
   "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "install:all": "node scripts/setup.mjs",
     "build:frontend": "cd frontend && npm install && npm run build",
     "build:backend": "cd backend && npm install --legacy-peer-deps && npx tsc",
     "build": "npm run build:frontend && npm run build:backend",

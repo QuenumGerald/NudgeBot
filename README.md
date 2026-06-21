@@ -43,11 +43,49 @@ While other assistants like OpenClaw re-inject the full conversation history int
 
 ## Quick start
 
+### Easy installer (macOS, Linux, Windows)
+
+The installer checks Node.js, installs root/backend/frontend dependencies, then forces you to choose and confirm an admin password before it creates `backend/.env` with that `ADMIN_PASSWORD` and a generated `JWT_SECRET` if the file does not already exist.
+
+**macOS / Linux:**
+
+```bash
+git clone https://github.com/QuenumGerald/NudgeBot
+cd NudgeBot
+./install.sh
+```
+
+**Windows PowerShell:**
+
+```powershell
+git clone https://github.com/QuenumGerald/NudgeBot
+cd NudgeBot
+.\install.ps1
+```
+
+**Any platform with npm:**
+
+```bash
+npm run setup
+```
+
+During installation, enter and confirm the admin password you want to use for login. For non-interactive installs, set `NUDGEBOT_ADMIN_PASSWORD` to a password of 4+ characters before running the installer. Then edit `backend/.env` and add at least one LLM API key (`DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, or `OPENAI_API_KEY`). Start the app with:
+
+```bash
+npm run dev
+```
+
+App available at `http://localhost:3000`.
+
+### Manual setup
+
 ```bash
 # Clone and install
 git clone https://github.com/QuenumGerald/NudgeBot
 cd NudgeBot
 npm install
+cd backend && npm install --legacy-peer-deps && cd ..
+cd frontend && npm install && cd ..
 
 # Configure (see Variables section below)
 cp backend/.env.example backend/.env
@@ -62,8 +100,6 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 # Run
 npm run dev
 ```
-
-App available at `http://localhost:3000`.
 
 **Login**: Use `POST /api/auth/login` with your `ADMIN_PASSWORD` to get a JWT token, then include it in requests with `Authorization: Bearer <token>`.
 
