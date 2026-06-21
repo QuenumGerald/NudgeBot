@@ -11,7 +11,8 @@
     "start": "cd backend && node dist/server.js",
     "dev": "cd backend && npx tsx src/server.ts",
     "desktop:start": "npm run build && electron .",
-    "desktop:build": "npm run build && electron-builder"
+    "desktop:build": "npm run build && electron-builder",
+    "uninstall": "node scripts/uninstall.mjs"
   },
   "devDependencies": {
     "electron": "^42.4.1",
