@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NudgeBot — Votre assistant IA autonome et local</title>
+  <!-- Google Fonts: Plus Jakarta Sans for headers, Inter for body -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:ital,wght@0,500;0,700;0,800;1,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Header / Navigation -->
+  <header class="header">
+    <div class="container header-container">
+      <div class="logo-group">
+        <img src="logo.png" alt="NudgeBot Bee Logo" class="logo-img">
+        <span class="logo-text">NudgeBot</span>
+      </div>
+      <nav class="nav">
+        <a href="#features" class="nav-link">Fonctionnalités</a>
+        <a href="#install" class="nav-link">Installation</a>
+        <a href="#contribute" class="nav-link">Contribuer</a>
+      </nav>
+      <div class="cta-group">
+        <div class="lang-selector">
+          <a href="index.html" class="lang-btn active">FR</a>
+          <span class="lang-separator">|</span>
+          <a href="en.html" class="lang-btn">EN</a>
+        </div>
+        <a href="#install" class="btn btn-primary">Démarrer</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container hero-container">
+      <div class="hero-content">
+        <h1 class="hero-title">L'assistant IA local et autonome qui simplifie vos tâches, <span class="highlight">installable en 1 clic</span> sur PC ou serveur.</h1>
+        <p class="hero-subtitle">
+          NudgeBot fusionne la puissance des modèles de langage (LLM) avec vos outils du quotidien. Une interface fluide, une mémoire persistante et une sécurité absolue grâce à une exécution locale.
+        </p>
+        <div class="hero-ctas">
+          <a href="#install" class="btn btn-primary btn-lg">Installer maintenant</a>
+          <a href="#features" class="btn btn-secondary btn-lg">Découvrir les avantages</a>
+        </div>
+      </div>
+      <div class="hero-image-container">
+        <div class="hero-mockup">
+          <div class="mockup-header">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+            <span class="mockup-title">NudgeBot Chat</span>
+          </div>
+          <div class="mockup-body">
+            <div class="message user-msg">
+              <div class="bubble">Quelles sont mes tâches aujourd'hui ?</div>
+            </div>
+            <div class="message bot-msg">
+              <div class="bot-avatar">
+                <img src="logo.png" alt="NudgeBot" class="bot-avatar-img">
+              </div>
+              <div class="bubble">
+                J'ai analysé vos emails et votre calendrier. Voici vos priorités :<br>
+                • Réunion de l'équipe à 14h00.<br>
+                • Répondre au client avant ce soir.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Key Advantage / Highlights -->
+  <section id="features" class="features">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">Fonctionnalités clés</h2>
+        <p class="section-subtitle">Conçu pour être rapide, extensible et respectueux de vos données.</p>
+      </div>
+
+      <div class="grid features-grid">
+        <!-- Feature 1 -->
+        <div class="card feature-card">
+          <div class="card-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="card-icon-svg"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </div>
+          <h3 class="card-title">Installation en 1 clic</h3>
+          <p class="card-text">
+            Que ce soit sur votre PC personnel pour un usage local ou sur votre serveur Docker pour une équipe, NudgeBot se déploie en quelques secondes avec une seule commande.
+          </p>
+        </div>
+
+        <!-- Feature 2 -->
+        <div class="card feature-card">
+          <div class="card-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="card-icon-svg"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <h3 class="card-title">Contrôle total & Privé</h3>
+          <p class="card-text">
+            Vos clés d'API et vos conversations sont stockées localement sur votre machine. Aucun serveur intermédiaire ne lit vos données sensibles.
+          </p>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class="card feature-card">
+          <div class="card-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="card-icon-svg"><path d="M18 10h-1.5a3 3 0 0 0-3-3V5H10v2a3 3 0 0 0-3 3H5.5a2.5 2.5 0 0 0 0 5H7v2a4 4 0 0 0 4 4h2a4 4 0 0 0 4-4v-2h1.5a2.5 2.5 0 0 0 0-5z"/><path d="M12 21v3"/></svg>
+          </div>
+          <h3 class="card-title">Extensibilité MCP Infinie</h3>
+          <p class="card-text">
+            Connectez NudgeBot à vos outils favoris : Google Calendar, bases de données, systèmes de fichiers ou outils personnalisés grâce au protocole standard MCP.
+          </p>
+        </div>
+
+        <!-- Feature 4 -->
+        <div class="card feature-card">
+          <div class="card-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="card-icon-svg"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 11v6c0 1.66 4 3 9 3s9-1.34 9-3v-6"/></svg>
+          </div>
+          <h3 class="card-title">Mémoire par compression IA</h3>
+          <p class="card-text">
+            Fini les pertes de contexte lors des longues conversations. Notre système de compression intelligente résume l'historique pour ne jamais perdre le fil.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Installation Section -->
+  <section id="install" class="install">
+    <div class="container">
+      <div class="install-box">
+        <div class="install-content">
+          <h2 class="section-title text-left">Prêt à démarrer ?</h2>
+          <p class="section-subtitle text-left">
+            Installez NudgeBot en local sur votre PC et lancez le serveur de développement.
+          </p>
+          <div class="install-tabs">
+            <div class="tab-content active" id="tab-pc">
+              <p>Clonez le projet, installez les dépendances et lancez le projet :</p>
+              <pre class="code-block"><code>git clone https://github.com/QuenumGerald/NudgeBot.git
+cd NudgeBot
+npm install
+
+# Configurer les variables d'env
+cp backend/.env.example backend/.env
+
+# Puis lancer
+npm run dev</code></pre>
+            </div>
+          </div>
+        </div>
+        <div class="install-visual">
+          <div class="stat-grid">
+            <div class="stat-card">
+              <span class="stat-number">1</span>
+              <span class="stat-label">Minute pour installer</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-number">100%</span>
+              <span class="stat-label">Contrôle des données</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contribution Section -->
+  <section id="contribute" class="contribute">
+    <div class="container">
+      <div class="contribute-container">
+        <h2 class="contribute-title">Contribuer au projet</h2>
+        <p class="contribute-desc">
+          NudgeBot est un projet 100% open-source sous licence MIT. Que ce soit pour améliorer l'assistant local, proposer des serveurs MCP ou remonter des bugs, toutes les contributions sont les bienvenues !
+        </p>
+        <a href="https://github.com/QuenumGerald/NudgeBot" class="btn btn-github btn-lg" target="_blank" rel="noopener noreferrer">
+          <svg class="btn-github-svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+          Rejoindre le GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-container">
+      <div class="footer-left">
+        <img src="logo.png" alt="NudgeBot" class="footer-logo">
+        <p class="footer-desc">Le compagnon IA autonome et local.</p>
+      </div>
+      <div class="footer-right">
+        <p>&copy; 2026 NudgeBot. Projet Open-Source.</p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
