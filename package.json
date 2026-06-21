@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "NudgeBot - Personal AI Assistant",
   "author": "Quenum Gerald <gerald@example.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QuenumGerald/NudgeBot.git"
+  },
   "main": "desktop.js",
   "scripts": {
     "setup": "node scripts/setup.mjs",
