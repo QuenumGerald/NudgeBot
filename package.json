@@ -24,6 +24,22 @@
     "electron": "^42.4.1",
     "electron-builder": "^25.1.8"
   },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.62",
+    "@google/jules-sdk": "^0.2.0",
+    "@mastra/core": "1.32.1",
+    "@mastra/mcp": "1.7.0",
+    "blazerjob": "^2.0.4",
+    "cheerio": "^1.2.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.1",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "tsx": "^4.21.0",
+    "zod": "^3.24.2"
+  },
   "build": {
     "appId": "com.nudgebot.app",
     "productName": "NudgeBot",
@@ -34,7 +50,6 @@
       "desktop.js",
       "preload.js",
       "backend/dist/**/*",
-      "backend/node_modules/**/*",
       "backend/.env.example",
       "frontend/dist/**/*"
     ],
