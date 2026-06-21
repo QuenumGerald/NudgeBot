@@ -27,6 +27,9 @@ jobs:
           node-version: 20
           cache: 'npm'
 
+      - name: Install Python setuptools (for node-gyp)
+        run: python3 -m pip install --user setuptools || python -m pip install --user setuptools || true
+
       - name: Install Root Dependencies
         run: npm install
 
