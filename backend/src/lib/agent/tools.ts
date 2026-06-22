@@ -359,7 +359,7 @@ export const executeCommandTool = createTool({
   execute: async ({ command }) => {
     try {
       const { stdout, stderr } = await exec(command, {
-        cwd: process.cwd(),
+        cwd: getWorkspaceRoot(),
         timeout: 15000,
         maxBuffer: 1024 * 1024,
       });

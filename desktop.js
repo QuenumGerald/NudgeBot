@@ -50,9 +50,7 @@ async function startServer() {
       
     fs.mkdirSync(userDataDir, { recursive: true });
     fs.writeFileSync(envFilePath, envContent, 'utf8');
-    console.log(`[desktop] Generated initial .env config with password: ${randomPassword}`);
-    
-    global.firstLaunchPassword = randomPassword;
+    console.log(`[desktop] Generated initial .env config`);
   }
 
   // Load env variables into process.env from the userData env file
@@ -82,6 +80,8 @@ async function startServer() {
   process.env.PORT = String(port);
   process.env.CORS_ORIGIN = `http://localhost:${port}`;
   process.env.NUDGEBOT_WORKDIR = path.join(userDataDir, 'workspace');
+  process.env.BLAZERJOB_DB_PATH = path.join(userDataDir, 'blazerjob.db');
+  process.env.NUDGEBOT_ENV_PATH = envFilePath;
 
   console.log(`[desktop] Starting backend on port ${port}...`);
   // Load the backend server
@@ -104,17 +104,11 @@ function createWindow() {
     show: false
   });
 
-  mainWindow.loadURL(`http://localhost:${port}`);
+  // Load loading screen immediately
+  mainWindow.loadFile(path.join(__dirname, 'loading.html'));
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    
-    if (global.firstLaunchPassword) {
-      mainWindow.webContents.executeJavaScript(`
-        alert("Welcome to NudgeBot Desktop!\\n\\nYour automatically generated admin password is:\\n\\n${global.firstLaunchPassword}\\n\\nYou can copy this password and change it in the Settings of the application.");
-      `).catch(console.error);
-      delete global.firstLaunchPassword;
-    }
   });
 
   mainWindow.on('closed', () => {
@@ -122,7 +116,7 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://localhost') || url.startsWith('file:')) {
+    if (url.startsWith('http://localhost') || url.startsWith('file:') || url.startsWith('data:')) {
       return { action: 'allow' };
     }
     shell.openExternal(url);
@@ -131,8 +125,15 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  await startServer();
   createWindow();
+
+  // Start the server asynchronously so the window shows up instantly
+  setTimeout(async () => {
+    await startServer();
+    if (mainWindow) {
+      mainWindow.loadURL(`http://localhost:${port}`);
+    }
+  }, 100);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

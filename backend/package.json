@@ -40,5 +40,9 @@
     "@vitest/coverage-v8": "^4.1.4",
     "ts-node": "^10.9.2",
     "vitest": "^4.1.8"
+  },
+  "overrides": {
+    "p-map": "4.0.0",
+    "@sindresorhus/slugify": "1.1.0"
   }
 }

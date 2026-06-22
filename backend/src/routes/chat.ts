@@ -10,7 +10,8 @@ import path from 'path';
 const router = Router();
 
 const getLocalHistoryPath = (userId: string) => {
-  return path.join(process.cwd(), 'workspace', `history_${userId}.json`);
+  const workdir = (process.env.NUDGEBOT_WORKDIR || path.join(process.cwd(), 'workspace')).trim();
+  return path.join(workdir, `history_${userId}.json`);
 };
 
 const getLLMConfigFromEnv = () => {

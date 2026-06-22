@@ -18,7 +18,8 @@
     "dev": "cd backend && npx tsx src/server.ts",
     "desktop:start": "npm run build && electron .",
     "desktop:build": "npm run build && electron-builder",
-    "uninstall": "node scripts/uninstall.mjs"
+    "uninstall": "node scripts/uninstall.mjs",
+    "postinstall": "node scripts/patch-tokenx.mjs"
   },
   "devDependencies": {
     "electron": "^32.2.0",
@@ -40,6 +41,10 @@
     "tsx": "^4.21.0",
     "zod": "^3.24.2"
   },
+  "overrides": {
+    "p-map": "4.0.0",
+    "@sindresorhus/slugify": "1.1.0"
+  },
   "build": {
     "appId": "com.nudgebot.app",
     "productName": "NudgeBot",
@@ -49,12 +54,16 @@
     "files": [
       "desktop.js",
       "preload.js",
+      "loading.html",
       "backend/dist/**/*",
       "backend/.env.example",
       "frontend/dist/**/*"
     ],
     "linux": {
       "icon": "build/icon.png",
+      "executableArgs": [
+        "--no-sandbox"
+      ],
       "target": [
         "AppImage",
         "deb"
@@ -71,6 +80,9 @@
       "target": [
         "nsis"
       ]
+    },
+    "deb": {
+      "afterInstall": "scripts/after-install.sh"
     }
   }
 }

@@ -14,6 +14,7 @@ import chatRouter from './routes/chat.js';
 import settingsRouter from './routes/settings.js';
 import notificationsRouter from './routes/notifications.js';
 import { startNotificationWorker } from './lib/notifications.js';
+import setupRouter from './routes/setup.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -46,6 +47,7 @@ getStore().then(() => {
   startNotificationWorker();
 }).catch(console.error);
 
+app.use('/api/setup', setupRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/chat', requireAuth, chatRouter);
 app.use('/api/settings', requireAuth, settingsRouter);

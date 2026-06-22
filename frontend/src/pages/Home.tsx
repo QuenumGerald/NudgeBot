@@ -66,9 +66,21 @@ export default function Home() {
   const storageKey = `chat_messages_${user.id ?? 'anonymous'}`;
 
   useEffect(() => {
-    if (!user.id) {
-      navigate('/login');
-    }
+    const checkSetupAndAuth = async () => {
+      try {
+        const res = await api.get('/setup/status') as { needsSetup: boolean };
+        if (res && res.needsSetup) {
+          navigate('/setup');
+          return;
+        }
+      } catch (err) {
+        console.error('Failed to check setup status:', err);
+      }
+      if (!user.id) {
+        navigate('/login');
+      }
+    };
+    void checkSetupAndAuth();
   }, [user.id, navigate]);
 
   useEffect(() => {

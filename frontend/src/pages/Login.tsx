@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,20 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const checkSetup = async () => {
+      try {
+        const res = await api.get('/setup/status') as { needsSetup: boolean };
+        if (res && res.needsSetup) {
+          navigate('/setup');
+        }
+      } catch (err) {
+        console.error('Failed to check setup status:', err);
+      }
+    };
+    void checkSetup();
+  }, [navigate]);
 
   const handleLogin = async () => {
     try {
