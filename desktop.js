@@ -82,6 +82,7 @@ async function startServer() {
   process.env.NUDGEBOT_WORKDIR = path.join(userDataDir, 'workspace');
   process.env.BLAZERJOB_DB_PATH = path.join(userDataDir, 'blazerjob.db');
   process.env.NUDGEBOT_ENV_PATH = envFilePath;
+  process.env.NUDGEBOT_DESKTOP = 'true';
 
   console.log(`[desktop] Starting backend on port ${port}...`);
   // Load the backend server

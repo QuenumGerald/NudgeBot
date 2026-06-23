@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import fs from 'fs';
+import path from 'path';
 import { getStore } from '../lib/githubStore.js';
 
 const router = Router();
@@ -37,8 +38,14 @@ function updateEnvFile(filePath: string, updates: Record<string, string>) {
 
 router.get('/status', (req, res) => {
   try {
-    const envFilePath = process.env.NUDGEBOT_ENV_PATH;
+    const envFilePath = process.env.NUDGEBOT_ENV_PATH || path.join(process.cwd(), '.env');
     let isCompleted = process.env.SETUP_COMPLETED === 'true';
+
+    // On standalone servers, skip setup if ADMIN_PASSWORD is manually configured
+    const isDesktop = process.env.NUDGEBOT_DESKTOP === 'true';
+    if (!isCompleted && !isDesktop && process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD !== 'your-admin-password') {
+      isCompleted = true;
+    }
 
     // If env variable is not explicitly true, double check file content if path is defined
     if (!isCompleted && envFilePath && fs.existsSync(envFilePath)) {
@@ -70,7 +77,7 @@ router.post('/config', async (req, res) => {
       return;
     }
 
-    const envFilePath = process.env.NUDGEBOT_ENV_PATH;
+    const envFilePath = process.env.NUDGEBOT_ENV_PATH || path.join(process.cwd(), '.env');
     const updates: Record<string, string> = {
       ADMIN_PASSWORD: adminPassword,
       LLM_PROVIDER: llmProvider,
@@ -86,11 +93,9 @@ router.post('/config', async (req, res) => {
       updates.OPENROUTER_API_KEY = llmApiKey;
     }
 
-    // Write to file if path is defined
-    if (envFilePath) {
-      console.log(`[setup] Writing updates to env file: ${envFilePath}`);
-      updateEnvFile(envFilePath, updates);
-    }
+    // Write to file
+    console.log(`[setup] Writing updates to env file: ${envFilePath}`);
+    updateEnvFile(envFilePath, updates);
 
     // Apply to current process.env instantly
     Object.assign(process.env, updates);
