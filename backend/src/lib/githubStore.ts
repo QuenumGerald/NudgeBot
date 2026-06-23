@@ -61,6 +61,27 @@ class GitHubStore {
   private initialized = false;
   private syncTimeout: ReturnType<typeof setTimeout> | null = null;
 
+  private removeSensitiveSettingsData(): boolean {
+    let changed = false;
+    for (const settings of this.data.settings) {
+      if (settings.llm_api_key !== null) {
+        settings.llm_api_key = null;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  private getSanitizedDataForPersistence(): StoreData {
+    return {
+      ...this.data,
+      settings: this.data.settings.map((settings) => ({
+        ...settings,
+        llm_api_key: null,
+      })),
+    };
+  }
+
   // ── Init ─────────────────────────────────────────────────────────────────
 
   async init(): Promise<void> {
@@ -80,6 +101,10 @@ class GitHubStore {
       const ctx = await this.loadFile("store/db.json");
       if (ctx) {
         this.data = ctx as StoreData;
+        const removedSensitiveData = this.removeSensitiveSettingsData();
+        if (removedSensitiveData) {
+          await this.saveToGitHub();
+        }
         console.log(
           `[store] loaded from GitHub: ${this.data.users.length} users, ${this.data.settings.length} settings, ${this.data.notifications.length} notifications`
         );
@@ -120,8 +145,8 @@ class GitHubStore {
     if (!mgr) return;
 
     try {
-      // Use the internal putFile via saveUserSettings (reuse existing API)
-      const json = JSON.stringify(this.data, null, 2);
+      // Never persist sensitive settings (API keys/tokens) in store/db.json.
+      const json = JSON.stringify(this.getSanitizedDataForPersistence(), null, 2);
       const ok = await (mgr as any).putFile(
         "store/db.json",
         json,
@@ -191,7 +216,8 @@ class GitHubStore {
     if (record) {
       if (patch.llm_provider !== undefined) record.llm_provider = patch.llm_provider;
       if (patch.llm_model !== undefined) record.llm_model = patch.llm_model;
-      if (patch.llm_api_key !== undefined) record.llm_api_key = patch.llm_api_key;
+      // API keys are sensitive and must stay in process/.env only, never in store/db.json.
+      if (patch.llm_api_key !== undefined) record.llm_api_key = null;
       if (patch.enabled_integrations !== undefined) record.enabled_integrations = patch.enabled_integrations;
     } else {
       record = {
@@ -199,7 +225,7 @@ class GitHubStore {
         user_id: userId,
         llm_provider: patch.llm_provider ?? null,
         llm_model: patch.llm_model ?? null,
-        llm_api_key: patch.llm_api_key ?? null,
+        llm_api_key: null,
         enabled_integrations: patch.enabled_integrations ?? "[]",
         created_at: new Date().toISOString(),
       };

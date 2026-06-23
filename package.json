@@ -28,8 +28,9 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.62",
     "@google/jules-sdk": "^0.2.0",
-    "@mastra/core": "1.32.1",
-    "@mastra/mcp": "1.7.0",
+    "@langchain/langgraph": "^1.4.5",
+    "@modelcontextprotocol/sdk": "^1.21.3",
+    "ai": "^6.0.208",
     "blazerjob": "^2.0.4",
     "cheerio": "^1.2.0",
     "cors": "^2.8.6",

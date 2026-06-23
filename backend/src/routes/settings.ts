@@ -6,6 +6,13 @@ import { AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = Router();
 
+function getProviderApiKeyEnvName(provider?: string | null): string {
+  if (provider === 'openai') return 'OPENAI_API_KEY';
+  if (provider === 'deepseek') return 'DEEPSEEK_API_KEY';
+  if (provider === 'openrouter') return 'OPENROUTER_API_KEY';
+  return 'LLM_API_KEY';
+}
+
 function updateEnvFile(filePath: string, updates: Record<string, string>) {
   let content = '';
   if (fs.existsSync(filePath)) {
@@ -121,13 +128,17 @@ router.post('/:userId', async (req: AuthenticatedRequest, res) => {
     const updated = await store.upsertSettings(Number(userId), {
       llm_provider,
       llm_model,
-      llm_api_key,
       enabled_integrations: enabled_integrations != null
         ? JSON.stringify(enabled_integrations)
         : undefined,
     });
 
     const updates: Record<string, string> = {};
+    if (llm_provider !== undefined) updates.LLM_PROVIDER = llm_provider;
+    if (llm_model !== undefined) updates.LLM_MODEL = llm_model || '';
+    if (llm_api_key !== undefined) {
+      updates[getProviderApiKeyEnvName(llm_provider ?? updated.llm_provider)] = llm_api_key;
+    }
     if (github_token !== undefined) updates.GITHUB_TOKEN = github_token;
     if (github_memory_repo !== undefined) updates.GITHUB_MEMORY_REPO = github_memory_repo;
     if (github_workspace_repo !== undefined) updates.GITHUB_WORKSPACE_REPO = github_workspace_repo;

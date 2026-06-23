@@ -37,6 +37,19 @@ describe('GitHubStore', () => {
         expect(retrieved).toEqual(settings);
     });
 
+
+    it('should not store LLM API keys in settings records', async () => {
+        const store = await getStore();
+        const settings = await store.upsertSettings(1, {
+            llm_provider: 'openai',
+            llm_model: 'gpt-4',
+            llm_api_key: 'sk-sensitive',
+        });
+
+        expect(settings.llm_api_key).toBeNull();
+        expect(store.getSettings(1)?.llm_api_key).toBeNull();
+    });
+
     it('should create and retrieve notifications', async () => {
         const store = await getStore();
         const notification = await store.createNotification(1, {

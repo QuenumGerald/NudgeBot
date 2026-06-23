@@ -101,9 +101,8 @@ router.post('/config', async (req, res) => {
       await store.upsertSettings(1, {
         llm_provider: llmProvider,
         llm_model: llmModel || '',
-        llm_api_key: llmApiKey,
       });
-      console.log('[setup] Successfully updated database settings for admin');
+      console.log('[setup] Successfully updated non-sensitive database settings for admin');
     } catch (dbError) {
       console.error('[setup] Warning: failed to save to database settings:', dbError);
     }
