@@ -1,8 +1,9 @@
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const net = require('net');
 const crypto = require('crypto');
+const http = require('http');
 
 let port = 3000;
 
@@ -125,14 +126,52 @@ function createWindow() {
   });
 }
 
+function checkServerReady(port) {
+  return new Promise((resolve) => {
+    const request = http.request({
+      host: '127.0.0.1',
+      port: port,
+      path: '/api/setup/status',
+      method: 'GET',
+      timeout: 1000
+    }, (res) => {
+      resolve(res.statusCode === 200 || res.statusCode === 404 || res.statusCode === 302);
+    });
+
+    request.on('error', () => {
+      resolve(false);
+    });
+
+    request.end();
+  });
+}
+
+async function waitForServer(port, maxAttempts = 30) {
+  for (let i = 0; i < maxAttempts; i++) {
+    const ready = await checkServerReady(port);
+    if (ready) return true;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  throw new Error(`Server did not start responding on port ${port} after 3 seconds.`);
+}
+
 app.whenReady().then(async () => {
   createWindow();
 
   // Start the server asynchronously so the window shows up instantly
   setTimeout(async () => {
-    await startServer();
-    if (mainWindow) {
-      mainWindow.loadURL(`http://localhost:${port}`);
+    try {
+      await startServer();
+      await waitForServer(port);
+      if (mainWindow) {
+        mainWindow.loadURL(`http://localhost:${port}`);
+      }
+    } catch (error) {
+      console.error('[desktop] Failed to start backend:', error);
+      dialog.showErrorBox(
+        'NudgeBot Startup Error',
+        `Failed to start the local backend server:\n\n${error.stack || error.message || error}`
+      );
     }
   }, 100);
 

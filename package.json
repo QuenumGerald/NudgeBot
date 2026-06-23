@@ -1,6 +1,6 @@
 {
   "name": "nudgebot-monorepo",
-  "version": "1.0.0-beta.8",
+  "version": "1.0.0-beta.9",
   "description": "NudgeBot - Personal AI Assistant",
   "author": "Quenum Gerald <geraldquenum9@gmail.com>",
   "repository": {
@@ -28,6 +28,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.62",
     "@google/jules-sdk": "^0.2.0",
+    "@langchain/core": "^1.2.1",
     "@langchain/langgraph": "^1.4.5",
     "@modelcontextprotocol/sdk": "^1.21.3",
     "ai": "^6.0.208",
@@ -83,6 +84,7 @@
       ]
     },
     "deb": {
+      "packageName": "nudgebot",
       "afterInstall": "scripts/after-install.sh"
     }
   }
