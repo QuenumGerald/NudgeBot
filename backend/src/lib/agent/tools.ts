@@ -1,4 +1,4 @@
-import { createTool as __originalCreateTool } from "@mastra/core/tools";
+import { tool as __originalCreateTool } from "ai";
 import type { ZodSchema } from "zod";
 
 function createTool<T extends ZodSchema>(options: {
@@ -19,10 +19,17 @@ function createTool<T extends ZodSchema>(options: {
       throw e;
     }
   };
-  return __originalCreateTool({
-    ...options,
-    execute: wrappedExecute
-  });
+  return {
+    ...__originalCreateTool({
+      description: options.description,
+      inputSchema: options.inputSchema,
+      execute: wrappedExecute,
+    }),
+    id: options.id,
+    description: options.description,
+    inputSchema: options.inputSchema,
+    execute: wrappedExecute,
+  };
 }
 
 import { z } from "zod";

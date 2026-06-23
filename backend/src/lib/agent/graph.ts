@@ -1,5 +1,6 @@
-import { Agent } from "@mastra/core/agent";
 import { createOpenAI } from "@ai-sdk/openai";
+import { stepCountIs, streamText } from "ai";
+import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { getTools } from "./tools.js";
 import { setupMCP } from "./mcp.js";
 
@@ -34,6 +35,25 @@ export const createModel = (provider: string, modelName: string, apiKey: string)
 // Keep createLLM as alias for backwards compatibility within the module
 export const createLLM = createModel;
 
+const GraphState = Annotation.Root({
+  messages: Annotation<Array<{ role: "user" | "assistant"; content: string }>>(),
+  maxSteps: Annotation<number>(),
+  result: Annotation<any>(),
+});
+
+type StreamOptions = {
+  maxSteps?: number;
+  runId?: string;
+};
+
+const toolsToRecord = (tools: Array<any>) => {
+  const record: Record<string, any> = {};
+  for (const toolDef of tools) {
+    record[toolDef.id] = toolDef;
+  }
+  return record;
+};
+
 export const getAgent = async (
   provider: string,
   modelName: string,
@@ -45,13 +65,7 @@ export const getAgent = async (
   const model = createModel(provider, modelName, apiKey);
   const mcpTools = await setupMCP(enabledIntegrations, userId);
   const localToolsArray = getTools();
-
-  // Convert local tools array to Record keyed by tool id
-  const localToolsRecord: Record<string, any> = {};
-  for (const tool of localToolsArray) {
-    localToolsRecord[tool.id] = tool;
-  }
-
+  const localToolsRecord = toolsToRecord(localToolsArray);
   const allTools = { ...localToolsRecord, ...mcpTools };
 
   const toolCatalog = [
@@ -64,7 +78,7 @@ export const getAgent = async (
   const systemParts = [
     `Tu es NudgeBot, un assistant IA personnel polyvalent et compétent.
 
-Tu es orchestré sous le capot par le framework d'agents **Mastra** (\`@mastra/core\`) et connecté au modèle de langage via **Vercel AI SDK** en TypeScript.
+Tu es orchestré sous le capot par **LangGraph** (\`@langchain/langgraph\`) et connecté au modèle de langage via **Vercel AI SDK** en TypeScript.
 L'application frontend utilise **React (Vite)** et le backend tourne sous **Node.js (Express)**.
 
 Tu peux aider sur TOUS les sujets : questions générales, programmation, rédaction, analyse, brainstorming, math, science, conseil, et bien plus.
@@ -110,11 +124,31 @@ Réponds en français par défaut.`,
 
   const systemPrompt = systemParts.join("\n");
 
-  return new Agent({
+  const graph = new StateGraph(GraphState)
+    .addNode("agent", async (state: any) => ({
+      result: streamText({
+        model,
+        system: systemPrompt,
+        messages: state.messages,
+        tools: allTools,
+        stopWhen: stepCountIs(state.maxSteps),
+      }),
+    }))
+    .addEdge(START, "agent")
+    .addEdge("agent", END)
+    .compile();
+
+  return {
     id: `nudgebot-${userId || "default"}`,
     name: "NudgeBot",
-    instructions: systemPrompt,
-    model,
-    tools: allTools,
-  });
+    async stream(messages: Array<{ role: "user" | "assistant"; content: string }>, options: StreamOptions = {}) {
+      const state = await graph.invoke({
+        messages,
+        maxSteps: options.maxSteps ?? 10,
+      }, {
+        runName: options.runId,
+      } as any);
+      return state.result;
+    },
+  };
 };

@@ -257,7 +257,7 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
       }
     }
 
-    // Convert to Mastra/AI SDK message format
+    // Convert to LangGraph/AI SDK message format
     const agentMessages = contextBudget.messages.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: toWellFormedUnicode(m.content || ''),

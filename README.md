@@ -12,7 +12,7 @@
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-20%2B-brightgreen?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js 20+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
   <a href="https://github.com/QuenumGerald/NudgeBot"><img src="https://img.shields.io/badge/TypeScript-5-blue?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"></a>
-  <a href="https://github.com/QuenumGerald/NudgeBot"><img src="https://img.shields.io/badge/Mastra-agent-orange?style=for-the-badge" alt="Mastra"></a>
+  <a href="https://github.com/QuenumGerald/NudgeBot"><img src="https://img.shields.io/badge/LangGraph-agent-blue?style=for-the-badge" alt="LangGraph"></a>
 </p>
 
 ---
@@ -145,9 +145,9 @@ No third-party memory service. No vector DB. Just a GitHub repo you already have
 
 ---
 
-### ⚡ Mastra agent with tool use
+### ⚡ LangGraph agent with tool use
 
-The agent is powered by [Mastra](https://mastra.dev/) which loops `LLM → tools → LLM` dynamically until no more tool calls are needed. Supported providers: **DeepSeek**, **OpenRouter**, **OpenAI** (configurable per user in Settings).
+The agent is orchestrated with [LangGraph](https://www.langchain.com/langgraph) and uses Vercel AI SDK tool-calling to loop `LLM → tools → LLM` dynamically until no more tool calls are needed. Supported providers: **DeepSeek**, **OpenRouter**, **OpenAI** (configurable per user in Settings).
 
 #### Built-in tools (17)
 
@@ -384,7 +384,7 @@ NudgeBot/
     └── src/
         ├── lib/
         │   ├── agent/
-        │   │   ├── graph.ts              # Mastra Agent configuration
+        │   │   ├── graph.ts              # LangGraph agent configuration
         │   │   ├── tools.ts              # 16 built-in tools (files, shell, web, email, notes, Jules…)
         │   │   └── mcp.ts                # On-demand MCP, per-user cache
         │   ├── githubContextManager.ts   # GitHub persistence (read/write/auto-create)
@@ -412,7 +412,7 @@ Browser → POST /api/chat  (JWT required)
   → getAgent(provider, model, apiKey, integrations, userId, previousContext)
       → setupMCP(integrations, userId)   ← lazy, per-user, cached
       → Merge 16 built-in tools + MCP tools
-      → Mastra Agent: LLM → tools → LLM → … → final answer
+      → LangGraph Agent: LLM → tools → LLM → … → final answer
   → SSE: { type: "thinking" } → { type: "delta", content } → { type: "done" }
 ```
 
