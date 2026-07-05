@@ -322,6 +322,14 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
       const mgr = getGitHubContextManager();
       if (mgr) {
         await mgr.saveUserContext(String(userId ?? ''), { messages: allMessages });
+        
+        // Save only the 50 most recent messages to GitHub to avoid overloading the repository
+        const recentMessages = allMessages.slice(-50);
+        await mgr.putFile(
+          `users/${userId}/messages.json`,
+          JSON.stringify(recentMessages, null, 2),
+          `Update messages history for user ${userId}`
+        );
       }
     } catch (saveError) {
       console.error('[chat] failed to save context:', saveError);
