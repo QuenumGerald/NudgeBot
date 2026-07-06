@@ -427,7 +427,7 @@ class GitHubStore {
         "SELECT * FROM notifications WHERE user_id = $1 ORDER BY send_at DESC",
         [userId]
       );
-      return res.rows.map((row) => ({
+      return res.rows.map((row: any) => ({
         id: row.id,
         user_id: row.user_id,
         recipient_email: row.recipient_email,
@@ -455,7 +455,7 @@ class GitHubStore {
       const res = await this.pool.query(
         "SELECT * FROM notifications WHERE sent_at IS NULL AND status = 'pending'"
       );
-      return res.rows.map((row) => ({
+      return res.rows.map((row: any) => ({
         id: row.id,
         user_id: row.user_id,
         recipient_email: row.recipient_email,

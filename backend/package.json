@@ -25,6 +25,7 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.5.2",
+    "@types/pg": "^8.20.0",
     "ai": "^6.0.208",
     "blazerjob": "^2.0.4",
     "cheerio": "^1.2.0",
@@ -40,7 +41,6 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@types/pg": "^8.20.0",
     "@vitest/coverage-v8": "^4.1.4",
     "ts-node": "^10.9.2",
     "vitest": "^4.1.8"
