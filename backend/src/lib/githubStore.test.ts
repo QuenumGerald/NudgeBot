@@ -159,21 +159,23 @@ describe('GitHubStore - Neon Postgres Mode', () => {
     expect(settings.llm_provider).toBe('deepseek');
   });
 
-  it('should prune old notifications if Postgres size exceeds the limit', async () => {
+  it('should prune old notifications and chat history if Postgres size exceeds the limit', async () => {
     mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // init
     mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 1, email: 'admin' }] }); // check admin
     const store = await getStore();
 
     // Mock pg_database_size query to return 460MB (exceeding 450MB limit)
     mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ size_bytes: 460 * 1024 * 1024 }] });
-    // Mock DELETE query return
+    // Mock DELETE notifications
     mockQuery.mockResolvedValueOnce({ rowCount: 15, rows: [] });
+    // Mock DELETE chat history
+    mockQuery.mockResolvedValueOnce({ rowCount: 5, rows: [] });
 
     await store.checkAndPruneDatabase();
 
-    // Check that we issued the DELETE query
-    expect(mockQuery).toHaveBeenLastCalledWith(
-      "DELETE FROM notifications WHERE sent_at IS NOT NULL OR status IN ('sent', 'failed', 'cancelled')"
+    // Check that we issued the chat delete query
+    expect(mockQuery).toHaveBeenCalledWith(
+      "DELETE FROM chat_history"
     );
   });
 
@@ -241,5 +243,32 @@ describe('GitHubStore - Neon Postgres Mode', () => {
       expect.stringContaining("INSERT INTO settings"),
       expect.any(Array)
     );
+  });
+
+  it('should save and load chat history in Postgres', async () => {
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // init
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 1, email: 'admin' }] }); // check admin
+    const store = await getStore();
+
+    mockQuery.mockReset();
+
+    // Mock INSERT query
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [] });
+
+    await store.saveChatHistory(1, '[{"role":"user","content":"hello"}]');
+
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO chat_history"),
+      [1, '[{"role":"user","content":"hello"}]']
+    );
+
+    // Mock SELECT query
+    mockQuery.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{ messages: '[{"role":"user","content":"hello"}]' }]
+    });
+
+    const history = await store.getChatHistory(1);
+    expect(history).toBe('[{"role":"user","content":"hello"}]');
   });
 });

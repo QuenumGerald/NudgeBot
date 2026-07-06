@@ -3,6 +3,8 @@
  */
 
 import pg from 'pg';
+import fs from 'fs/promises';
+import path from 'path';
 import { initGitHubContextManager, getGitHubMemoryManager } from './githubContextManager.js';
 
 const { Pool } = pg;
@@ -122,6 +124,12 @@ class GitHubStore {
             run_count INTEGER DEFAULT 0,
             last_sent_at TIMESTAMP WITH TIME ZONE,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS chat_history (
+            user_id INTEGER PRIMARY KEY,
+            messages TEXT NOT NULL DEFAULT '[]',
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
         `);
 
@@ -619,6 +627,93 @@ class GitHubStore {
     this.scheduleSave();
   }
 
+  async getChatHistory(userId: number): Promise<string | null> {
+    if (this.usePostgres && this.pool) {
+      try {
+        const res = await this.pool.query("SELECT messages FROM chat_history WHERE user_id = $1", [userId]);
+        if (res.rowCount !== null && res.rowCount > 0) {
+          return res.rows[0].messages;
+        }
+
+        // If not found in Postgres, check local file system to migrate it!
+        const localPath = path.join(process.cwd(), 'workspace', `history_${userId}.json`);
+        try {
+          const content = await fs.readFile(localPath, 'utf-8');
+          if (content) {
+            console.log(`[store] Found local history file for user ${userId}. Migrating to Postgres...`);
+            await this.saveChatHistory(userId, content);
+            return content;
+          }
+        } catch {
+          // Ignore if local file doesn't exist
+        }
+
+        // Check GitHub if local doesn't exist either
+        await initGitHubContextManager();
+        const mgr = getGitHubMemoryManager();
+        if (mgr) {
+          const content = await (mgr as any).getFile(`users/${userId}/messages.json`);
+          if (content) {
+            console.log(`[store] Found GitHub history file for user ${userId}. Migrating to Postgres...`);
+            await this.saveChatHistory(userId, content);
+            return content;
+          }
+        }
+      } catch (err) {
+        console.error("[store] Error getting chat history from Postgres:", err);
+      }
+      return null;
+    }
+
+    // Fallback if not using Postgres: read local file
+    const localPath = path.join(process.cwd(), 'workspace', `history_${userId}.json`);
+    try {
+      return await fs.readFile(localPath, 'utf-8');
+    } catch {
+      // Fallback to GitHub
+      await initGitHubContextManager();
+      const mgr = getGitHubMemoryManager();
+      if (mgr) {
+        return await (mgr as any).getFile(`users/${userId}/messages.json`);
+      }
+    }
+    return null;
+  }
+
+  async saveChatHistory(userId: number, messagesJson: string): Promise<void> {
+    if (this.usePostgres && this.pool) {
+      try {
+        await this.pool.query(
+          "INSERT INTO chat_history (user_id, messages, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (user_id) DO UPDATE SET messages = EXCLUDED.messages, updated_at = EXCLUDED.updated_at",
+          [userId, messagesJson]
+        );
+      } catch (err) {
+        console.error("[store] Error saving chat history to Postgres:", err);
+      }
+      return;
+    }
+
+    // Save to local file system
+    const localPath = path.join(process.cwd(), 'workspace', `history_${userId}.json`);
+    try {
+      await fs.mkdir(path.dirname(localPath), { recursive: true });
+      await fs.writeFile(localPath, messagesJson, 'utf-8');
+    } catch (err) {
+      console.error('[store] failed to save local history:', err);
+    }
+
+    // Save to GitHub
+    await initGitHubContextManager();
+    const mgr = getGitHubMemoryManager();
+    if (mgr) {
+      try {
+        await (mgr as any).putFile(`users/${userId}/messages.json`, messagesJson);
+      } catch (err) {
+        console.error("[store] failed to save history to GitHub:", err);
+      }
+    }
+  }
+
   async checkAndPruneDatabase(): Promise<void> {
     if (process.env.DISABLE_DB_PRUNING === 'true') {
       return;
@@ -637,11 +732,14 @@ class GitHubStore {
         }
 
         if (sizeBytes > limitBytes) {
-          console.warn(`[store] Neon Database size (${(sizeBytes / (1024 * 1024)).toFixed(2)} MB) is close to 500MB limit. Pruning old notifications...`);
+          console.warn(`[store] Neon Database size (${(sizeBytes / (1024 * 1024)).toFixed(2)} MB) is close to 500MB limit. Pruning old notifications and chat histories...`);
           const deleteRes = await this.pool.query(
             "DELETE FROM notifications WHERE sent_at IS NOT NULL OR status IN ('sent', 'failed', 'cancelled')"
           );
-          console.log(`[store] Pruned ${deleteRes.rowCount} historical notifications to free up database space.`);
+          const deleteChatRes = await this.pool.query(
+            "DELETE FROM chat_history"
+          );
+          console.log(`[store] Pruned ${deleteRes.rowCount} historical notifications and cleared ${deleteChatRes.rowCount || 0} chat histories to free up database space.`);
         }
       }
     } catch (err) {

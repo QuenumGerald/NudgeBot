@@ -5,33 +5,9 @@ import { applyContextBudget, getMaxInputTokensFromEnv } from '../lib/agent/conte
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { toWellFormedUnicode } from '../lib/githubContextManager.js';
 import fs from 'fs/promises';
-import fsSync from 'fs';
 import path from 'path';
 
 const router = Router();
-
-const getWorkspaceRoot = (): string => {
-  const envWorkdir = (process.env.NUDGEBOT_WORKDIR || '').trim();
-  if (envWorkdir) {
-    try {
-      fsSync.mkdirSync(envWorkdir, { recursive: true });
-      return envWorkdir;
-    } catch (err) {
-      console.warn(`[workspace] Configured workdir '${envWorkdir}' is not writable, falling back to local workspace.`);
-    }
-  }
-  const fallback = path.join(process.cwd(), 'workspace');
-  try {
-    fsSync.mkdirSync(fallback, { recursive: true });
-  } catch (err) {
-    // ignore
-  }
-  return fallback;
-};
-
-const getLocalHistoryPath = (userId: string) => {
-  return path.join(getWorkspaceRoot(), `history_${userId}.json`);
-};
 
 const getLLMConfigFromEnv = () => {
   const provider = (process.env.LLM_PROVIDER || 'deepseek').trim();
@@ -131,27 +107,8 @@ router.get('/history', async (req: AuthenticatedRequest, res: ExpressResponse) =
   }
 
   try {
-    const localPath = getLocalHistoryPath(String(userId));
-    let messagesJson: string | null = null;
-    try {
-      messagesJson = await fs.readFile(localPath, 'utf-8');
-    } catch {
-      // Fallback: check GitHub messages.json once to migrate
-      const { getGitHubContextManager } = await import('../lib/githubContextManager.js');
-      const mgr = getGitHubContextManager();
-      if (mgr) {
-        messagesJson = await mgr.getFile(`users/${userId}/messages.json`);
-        if (messagesJson) {
-          // Save locally so we don't hit GitHub again
-          try {
-            await fs.mkdir(path.dirname(localPath), { recursive: true });
-            await fs.writeFile(localPath, messagesJson, 'utf-8');
-          } catch (writeErr) {
-            console.error('[chat] failed to save migrated history locally:', writeErr);
-          }
-        }
-      }
-    }
+    const store = await getStore();
+    const messagesJson = await store.getChatHistory(userId);
 
     if (messagesJson) {
       res.json({ messages: JSON.parse(messagesJson) });
@@ -322,7 +279,6 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
 
     // Save updated context back to GitHub & locally
     try {
-      const localPath = getLocalHistoryPath(String(userId ?? ''));
       const allMessages = [
         ...agentMessages,
         { role: 'assistant', content: toWellFormedUnicode(content) },
@@ -332,23 +288,15 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
         timestamp: new Date().toISOString(),
       }));
 
-      // 1. Save full history locally (instant)
-      await fs.mkdir(path.dirname(localPath), { recursive: true });
-      await fs.writeFile(localPath, JSON.stringify(allMessages, null, 2), 'utf-8');
+      // 1. Save history to the store (Neon Postgres or local fallback)
+      const store = await getStore();
+      await store.saveChatHistory(Number(userId), JSON.stringify(allMessages, null, 2));
 
-      // 2. Save only compressed summary context to GitHub
+      // 2. Save compressed summary context to GitHub
       const { getGitHubContextManager } = await import('../lib/githubContextManager.js');
       const mgr = getGitHubContextManager();
       if (mgr) {
         await mgr.saveUserContext(String(userId ?? ''), { messages: allMessages });
-        
-        // Save only the 50 most recent messages to GitHub to avoid overloading the repository
-        const recentMessages = allMessages.slice(-50);
-        await mgr.putFile(
-          `users/${userId}/messages.json`,
-          JSON.stringify(recentMessages, null, 2),
-          `Update messages history for user ${userId}`
-        );
       }
     } catch (saveError) {
       console.error('[chat] failed to save context:', saveError);
