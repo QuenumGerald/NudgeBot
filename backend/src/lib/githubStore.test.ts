@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getStore, resetStoreForTesting } from './githubStore.js';
-import { resetManagerForTesting } from './githubContextManager.js';
+import * as ctxMgr from './githubContextManager.js';
 
 // Setup pg mock globally for testing Postgres codepaths
 const mockQuery = vi.fn();
@@ -26,7 +26,7 @@ vi.mock('pg', () => {
 describe('GitHubStore - GitHub Fallback Mode', () => {
   beforeEach(() => {
     resetStoreForTesting();
-    resetManagerForTesting();
+    ctxMgr.resetManagerForTesting();
     vi.stubGlobal('process', {
       ...process,
       env: {
@@ -198,5 +198,48 @@ describe('GitHubStore - Neon Postgres Mode', () => {
 
     // Verify pg query was never called
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it('should migrate data from GitHub JSON store to Postgres if Postgres is empty', async () => {
+    // Mock the queries for init()
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // CREATE TABLE queries
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 1, email: 'admin' }] }); // check admin
+    
+    const store = await getStore();
+
+    // Mock getGitHubMemoryManager to return a dummy manager
+    vi.spyOn(ctxMgr, 'getGitHubMemoryManager').mockReturnValue({
+      putFile: vi.fn(),
+      getFile: vi.fn(),
+    } as any);
+
+    // Now we mock loadFile
+    vi.spyOn(store as any, 'loadFile').mockResolvedValue({
+      users: [{ id: 1, email: 'admin', password_hash: 'hash' }],
+      settings: [{ id: 1, user_id: 1, llm_provider: 'openai', llm_model: 'gpt-4' }],
+      notifications: [{ id: 1, user_id: 1, recipient_email: 'test@test.com', subject: 'Hi', body: 'body', send_at: '2026-07-06' }],
+      _nextIds: { users: 2, settings: 2, notifications: 2 }
+    });
+
+    // Reset mockQuery so we can assert on migration queries
+    mockQuery.mockReset();
+
+    // Mock count query inside migration
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ count: 0 }] });
+    // Mock user insert
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [] });
+    // Mock settings insert
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [] });
+    // Mock notifications insert
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [] });
+
+    // Call migrate
+    await (store as any).migrateGitHubDataToPostgres();
+
+    // Verify SQL query inserts were called
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO settings"),
+      expect.any(Array)
+    );
   });
 });

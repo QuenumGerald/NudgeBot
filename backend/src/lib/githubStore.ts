@@ -131,6 +131,9 @@ class GitHubStore {
           await this.pool.query("INSERT INTO users (id, email, password_hash) VALUES (1, 'admin', '') ON CONFLICT DO NOTHING");
         }
 
+        // Migrate existing data from GitHub if Postgres is empty
+        await this.migrateGitHubDataToPostgres();
+
         console.log("[store] Neon Database initialized and tables verified");
         this.initialized = true;
         return;
@@ -180,6 +183,63 @@ class GitHubStore {
         created_at: new Date().toISOString(),
       });
       this.data._nextIds.users = 2;
+    }
+  }
+
+  private async migrateGitHubDataToPostgres(): Promise<void> {
+    if (!this.pool) return;
+
+    try {
+      const settingsCountRes = await this.pool.query("SELECT COUNT(*) AS count FROM settings");
+      if (!settingsCountRes || !settingsCountRes.rows || settingsCountRes.rows.length === 0) {
+        return;
+      }
+      if (Number(settingsCountRes.rows[0].count) > 0) {
+        return;
+      }
+
+      console.log("[store] Neon database settings table is empty. Checking for existing GitHub data to migrate...");
+      await initGitHubContextManager();
+      const mgr = getGitHubMemoryManager();
+      if (!mgr) return;
+
+      const ctx = await this.loadFile("store/db.json");
+      if (!ctx) return;
+
+      const githubData = ctx as StoreData;
+      console.log(`[store] Found existing data on GitHub (${githubData.users.length} users, ${githubData.settings.length} settings, ${githubData.notifications.length} notifications). Migrating to Neon...`);
+
+      // Migrate users
+      for (const u of githubData.users) {
+        await this.pool.query(
+          "INSERT INTO users (id, email, password_hash, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING",
+          [u.id, u.email, u.password_hash, u.created_at || new Date().toISOString()]
+        );
+      }
+
+      // Migrate settings
+      for (const s of githubData.settings) {
+        await this.pool.query(
+          "INSERT INTO settings (id, user_id, llm_provider, llm_model, llm_api_key, enabled_integrations, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING",
+          [s.id, s.user_id, s.llm_provider, s.llm_model, s.llm_api_key, s.enabled_integrations || '[]', s.created_at || new Date().toISOString()]
+        );
+      }
+
+      // Migrate notifications
+      for (const n of githubData.notifications) {
+        await this.pool.query(
+          `INSERT INTO notifications (id, user_id, recipient_email, subject, body, send_at, sent_at, status, last_error, recurrence_interval_minutes, max_runs, run_count, last_sent_at, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) ON CONFLICT (id) DO NOTHING`,
+          [
+            n.id, n.user_id, n.recipient_email, n.subject, n.body, n.send_at, n.sent_at, n.status, n.last_error,
+            n.recurrence_interval_minutes, n.max_runs, n.run_count || 0, n.last_sent_at, n.created_at || new Date().toISOString()
+          ]
+        );
+      }
+
+      console.log("[store] Neon Database migration from GitHub completed successfully!");
+    } catch (err) {
+      console.error("[store] Error during data migration to Neon Postgres:", err);
     }
   }
 
