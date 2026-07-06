@@ -52,7 +52,7 @@ router.get('/:userId', async (req: AuthenticatedRequest, res) => {
 
   try {
     const store = await getStore();
-    const settings = store.getSettings(Number(userId));
+    const settings = await store.getSettings(Number(userId));
 
     const config = {
       github_token: process.env.GITHUB_TOKEN || '',

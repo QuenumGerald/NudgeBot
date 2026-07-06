@@ -35,6 +35,7 @@ function createTool<T extends ZodSchema>(options: {
 import { z } from "zod";
 import path from "path";
 import { promises as fs } from "fs";
+import fsSync from "fs";
 import { exec as execCallback } from "child_process";
 import { promisify } from "util";
 import { jobs } from "../scheduler.js";
@@ -46,7 +47,22 @@ const exec = promisify(execCallback);
 // ── Workspace helpers ─────────────────────────────────────────────────────────
 
 const getWorkspaceRoot = (): string => {
-  return (process.env.NUDGEBOT_WORKDIR || path.join(process.cwd(), "workspace")).trim();
+  const envWorkdir = (process.env.NUDGEBOT_WORKDIR || "").trim();
+  if (envWorkdir) {
+    try {
+      fsSync.mkdirSync(envWorkdir, { recursive: true });
+      return envWorkdir;
+    } catch (err) {
+      console.warn(`[workspace] Configured workdir '${envWorkdir}' is not writable, falling back to local workspace.`);
+    }
+  }
+  const fallback = path.join(process.cwd(), "workspace");
+  try {
+    fsSync.mkdirSync(fallback, { recursive: true });
+  } catch (err) {
+    // ignore
+  }
+  return fallback;
 };
 
 const getProjectsRoot = () => {
@@ -224,7 +240,7 @@ export const createSchedulingTools = () => {
     execute: async () => {
       try {
         const store = await getStore();
-        const notifications = store.getNotificationsByUser(1);
+        const notifications = await store.getNotificationsByUser(1);
         const tasks = jobs.getTasks().filter((t: any) => t.type !== null || t.config !== null);
 
         let result = "";
@@ -263,7 +279,7 @@ export const createSchedulingTools = () => {
     execute: async ({ taskId }) => {
       try {
         const store = await getStore();
-        const notification = store.getNotification(taskId);
+        const notification = await store.getNotification(taskId);
         if (notification) {
           await store.updateNotification(taskId, {
             status: "cancelled",
@@ -783,6 +799,128 @@ export const readNoteTool = createTool({
   },
 });
 
+export const listGitHubRepositoriesTool = createTool({
+  id: "list_github_repositories",
+  description: "Lists all GitHub repositories of the authenticated user.",
+  inputSchema: z.object({
+    visibility: z.enum(["all", "public", "private"]).optional().describe("Visibility of repositories to return (all, public, or private)."),
+    sort: z.enum(["created", "updated", "pushed", "full_name"]).optional().describe("Property to sort the results by."),
+    direction: z.enum(["asc", "desc"]).optional().describe("Direction to sort the results by."),
+    perPage: z.number().optional().describe("Results per page (max 100)."),
+    page: z.number().optional().describe("Page number of results to fetch."),
+  }),
+  execute: async ({ visibility, sort, direction, perPage, page }) => {
+    const token = (process.env.GITHUB_PERSONAL_ACCESS_TOKEN || process.env.GITHUB_TOKEN || process.env.GITHUB_CONTEXT_TOKEN || "").trim();
+    if (!token) {
+      throw new Error("GitHub token not configured. Please set GITHUB_PERSONAL_ACCESS_TOKEN or configure the GitHub integration.");
+    }
+
+    try {
+      const url = new URL("https://api.github.com/user/repos");
+      if (visibility) url.searchParams.set("visibility", visibility);
+      if (sort) url.searchParams.set("sort", sort);
+      if (direction) url.searchParams.set("direction", direction);
+      if (perPage) url.searchParams.set("per_page", String(perPage));
+      if (page) url.searchParams.set("page", String(page));
+
+      const res = await fetch(url.toString(), {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github.v3+json",
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!res.ok) {
+        const bodyText = await res.text();
+        throw new Error(`GitHub API returned status ${res.status}: ${bodyText}`);
+      }
+
+      const repos = (await res.json()) as Array<{
+        name: string;
+        full_name: string;
+        private: boolean;
+        html_url: string;
+        description: string | null;
+      }>;
+
+      return JSON.stringify(
+        repos.map((r) => ({
+          name: r.name,
+          full_name: r.full_name,
+          private: r.private,
+          html_url: r.html_url,
+          description: r.description,
+        })),
+        null,
+        2
+      );
+    } catch (e: any) {
+      throw new Error(`Failed to list GitHub repositories: ${e.message}`);
+    }
+  },
+});
+
+export const getGitHubContentsTool = createTool({
+  id: "get_github_contents",
+  description: "Gets the contents of a file or directory in a GitHub repository.",
+  inputSchema: z.object({
+    owner: z.string().describe("The owner of the repository (e.g. 'QuenumGerald')."),
+    repo: z.string().describe("The name of the repository (e.g. 'nudgebot-workspace')."),
+    path: z.string().optional().default("").describe("The path to the file or directory. Defaults to the root directory."),
+    ref: z.string().optional().describe("The name of the commit/branch/tag. Default: the repository's default branch."),
+  }),
+  execute: async ({ owner, repo, path: filePath, ref }) => {
+    const token = (process.env.GITHUB_PERSONAL_ACCESS_TOKEN || process.env.GITHUB_TOKEN || process.env.GITHUB_CONTEXT_TOKEN || "").trim();
+    if (!token) {
+      throw new Error("GitHub token not configured. Please set GITHUB_PERSONAL_ACCESS_TOKEN or configure the GitHub integration.");
+    }
+
+    try {
+      const cleanPath = filePath.replace(/^\/+/, "");
+      const url = new URL(`https://api.github.com/repos/${owner}/${repo}/contents/${cleanPath}`);
+      if (ref) url.searchParams.set("ref", ref);
+
+      const res = await fetch(url.toString(), {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github.v3+json",
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!res.ok) {
+        const bodyText = await res.text();
+        throw new Error(`GitHub API returned status ${res.status}: ${bodyText}`);
+      }
+
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        // It's a directory
+        return JSON.stringify(
+          data.map((item) => ({
+            name: item.name,
+            path: item.path,
+            type: item.type, // 'file' or 'dir'
+            size: item.size,
+            download_url: item.download_url,
+          })),
+          null,
+          2
+        );
+      } else if (data && typeof data === "object" && "content" in data) {
+        // It's a file
+        const content = Buffer.from(data.content, "base64").toString("utf-8");
+        return content;
+      }
+
+      return JSON.stringify(data, null, 2);
+    } catch (e: any) {
+      throw new Error(`Failed to get GitHub contents: ${e.message}`);
+    }
+  },
+});
+
 export const syncToWorkspaceTool = createTool({
   id: "sync_to_workspace",
   description: "Syncs a local file from the workspace to the dedicated GitHub workspace repository for permanent storage.",
@@ -836,6 +974,9 @@ export const staticTools = [
   listJulesSourcesTool,
   listJulesSessionsTool,
   julesSessionTool,
+  // GitHub
+  listGitHubRepositoriesTool,
+  getGitHubContentsTool,
 ];
 
 /** Returns the full tool set including scheduling tools. */

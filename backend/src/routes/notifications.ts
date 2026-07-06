@@ -72,7 +72,7 @@ router.get('/:userId', async (req: AuthenticatedRequest, res) => {
 
   try {
     const store = await getStore();
-    const notifications = store.getNotificationsByUser(Number(userId));
+    const notifications = await store.getNotificationsByUser(Number(userId));
     res.json(notifications);
   } catch (error) {
     console.error('List notifications error:', error);

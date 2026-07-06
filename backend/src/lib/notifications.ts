@@ -67,7 +67,7 @@ const scheduleNotificationExecution = (notificationId: number, sendAt: Date) => 
 
 const processNotificationById = async (notificationId: number) => {
   const store = await getStore();
-  const notification = store.getNotification(notificationId);
+  const notification = await store.getNotification(notificationId);
 
   if (!notification || notification.sent_at !== null || notification.status !== 'pending') {
     return;
@@ -119,7 +119,7 @@ const processNotificationById = async (notificationId: number) => {
 const reconcilePendingNotifications = async () => {
   console.log('[notifications] reconcilePendingNotifications started');
   const store = await getStore();
-  const pending = store.getPendingNotifications();
+  const pending = await store.getPendingNotifications();
   console.log(`[notifications] found ${pending.length} pending notifications`);
 
   for (const notification of pending) {

@@ -1,10 +1,11 @@
 /**
- * In-memory store backed by GitHub JSON files.
- * Loads once at startup, writes back on mutations.
- * Replaces SQLite entirely — zero native dependencies.
+ * Store backed by Neon (PostgreSQL) with a fallback to GitHub/In-Memory JSON database.
  */
 
-import { initGitHubContextManager, getGitHubMemoryManager } from "./githubContextManager.js";
+import pg from 'pg';
+import { initGitHubContextManager, getGitHubMemoryManager } from './githubContextManager.js';
+
+const { Pool } = pg;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,47 +47,100 @@ interface StoreData {
   users: UserRecord[];
   settings: SettingsRecord[];
   notifications: NotificationRecord[];
-  _nextIds: { users: number; settings: number; notifications: number };
+  _nextIds: {
+    users: number;
+    settings: number;
+    notifications: number;
+  };
 }
 
 // ── Store ────────────────────────────────────────────────────────────────────
 
 class GitHubStore {
+  private pool: pg.Pool | null = null;
+  private usePostgres = false;
+  private initialized = false;
+
+  // In-memory data for GitHub/In-Memory fallback mode
   private data: StoreData = {
     users: [],
     settings: [],
     notifications: [],
-    _nextIds: { users: 1, settings: 1, notifications: 1 },
+    _nextIds: {
+      users: 1,
+      settings: 1,
+      notifications: 1,
+    },
   };
-  private initialized = false;
-  private syncTimeout: ReturnType<typeof setTimeout> | null = null;
-
-  private removeSensitiveSettingsData(): boolean {
-    let changed = false;
-    for (const settings of this.data.settings) {
-      if (settings.llm_api_key !== null) {
-        settings.llm_api_key = null;
-        changed = true;
-      }
-    }
-    return changed;
-  }
-
-  private getSanitizedDataForPersistence(): StoreData {
-    return {
-      ...this.data,
-      settings: this.data.settings.map((settings) => ({
-        ...settings,
-        llm_api_key: null,
-      })),
-    };
-  }
+  private syncTimeout: NodeJS.Timeout | null = null;
 
   // ── Init ─────────────────────────────────────────────────────────────────
 
   async init(): Promise<void> {
     if (this.initialized) return;
 
+    const connectionString = process.env.DATABASE_URL;
+    if (connectionString && (connectionString.startsWith('postgres') || connectionString.includes('neon.tech'))) {
+      console.log("[store] DATABASE_URL points to Postgres. Initializing NeonStore...");
+      this.usePostgres = true;
+      this.pool = new Pool({
+        connectionString,
+        ssl: connectionString.includes('localhost') || connectionString.includes('127.0.0.1') ? false : { rejectUnauthorized: false }
+      });
+
+      try {
+        await this.pool.query(`
+          CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS settings (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER UNIQUE NOT NULL,
+            llm_provider VARCHAR(50),
+            llm_model VARCHAR(100),
+            llm_api_key VARCHAR(255),
+            enabled_integrations TEXT DEFAULT '[]',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS notifications (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            recipient_email VARCHAR(255) NOT NULL,
+            subject VARCHAR(255) NOT NULL,
+            body TEXT NOT NULL,
+            send_at TIMESTAMP WITH TIME ZONE NOT NULL,
+            sent_at TIMESTAMP WITH TIME ZONE,
+            status VARCHAR(50) DEFAULT 'pending',
+            last_error TEXT,
+            recurrence_interval_minutes INTEGER,
+            max_runs INTEGER,
+            run_count INTEGER DEFAULT 0,
+            last_sent_at TIMESTAMP WITH TIME ZONE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+
+        // Ensure admin user exists
+        const res = await this.pool.query("SELECT * FROM users WHERE email = 'admin'");
+        if (res.rowCount === 0) {
+          await this.pool.query("INSERT INTO users (id, email, password_hash) VALUES (1, 'admin', '') ON CONFLICT DO NOTHING");
+        }
+
+        console.log("[store] Neon Database initialized and tables verified");
+        this.initialized = true;
+        return;
+      } catch (err) {
+        console.error("[store] Neon Database initialization failed, falling back to GitHub store:", err);
+        this.usePostgres = false;
+      }
+    }
+
+    console.log("[store] No Postgres connection string. Initializing GitHub/In-Memory store...");
     await initGitHubContextManager();
     const mgr = getGitHubMemoryManager();
     if (!mgr) {
@@ -129,10 +183,30 @@ class GitHubStore {
     }
   }
 
+  private removeSensitiveSettingsData(): boolean {
+    let changed = false;
+    for (const settings of this.data.settings) {
+      if (settings.llm_api_key !== null) {
+        settings.llm_api_key = null;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  private getSanitizedDataForPersistence(): StoreData {
+    return {
+      ...this.data,
+      settings: this.data.settings.map((settings) => ({
+        ...settings,
+        llm_api_key: null,
+      })),
+    };
+  }
+
   // ── GitHub sync ──────────────────────────────────────────────────────────
 
   private scheduleSave(): void {
-    // Debounce: save at most once per 2 seconds
     if (this.syncTimeout) return;
     this.syncTimeout = setTimeout(async () => {
       this.syncTimeout = null;
@@ -145,7 +219,6 @@ class GitHubStore {
     if (!mgr) return;
 
     try {
-      // Never persist sensitive settings (API keys/tokens) in store/db.json.
       const json = JSON.stringify(this.getSanitizedDataForPersistence(), null, 2);
       const ok = await (mgr as any).putFile(
         "store/db.json",
@@ -182,28 +255,60 @@ class GitHubStore {
     }
   }
 
-  /** Force an immediate save (e.g. on SIGTERM). */
-  async flush(): Promise<void> {
-    if (this.syncTimeout) {
-      clearTimeout(this.syncTimeout);
-      this.syncTimeout = null;
-    }
-    await this.saveToGitHub();
-  }
+
 
   // ── Users ────────────────────────────────────────────────────────────────
 
-  getUser(id: number): UserRecord | undefined {
+  async getUser(id: number): Promise<UserRecord | undefined> {
+    if (this.usePostgres) {
+      if (!this.pool) return undefined;
+      const res = await this.pool.query("SELECT * FROM users WHERE id = $1", [id]);
+      if (res.rowCount === 0) return undefined;
+      const row = res.rows[0];
+      return {
+        id: row.id,
+        email: row.email,
+        password_hash: row.password_hash,
+        created_at: row.created_at ? new Date(row.created_at).toISOString() : '',
+      };
+    }
     return this.data.users.find((u) => u.id === id);
   }
 
-  getUserByEmail(email: string): UserRecord | undefined {
+  async getUserByEmail(email: string): Promise<UserRecord | undefined> {
+    if (this.usePostgres) {
+      if (!this.pool) return undefined;
+      const res = await this.pool.query("SELECT * FROM users WHERE email = $1", [email]);
+      if (res.rowCount === 0) return undefined;
+      const row = res.rows[0];
+      return {
+        id: row.id,
+        email: row.email,
+        password_hash: row.password_hash,
+        created_at: row.created_at ? new Date(row.created_at).toISOString() : '',
+      };
+    }
     return this.data.users.find((u) => u.email === email);
   }
 
   // ── Settings ─────────────────────────────────────────────────────────────
 
-  getSettings(userId: number): SettingsRecord | undefined {
+  async getSettings(userId: number): Promise<SettingsRecord | undefined> {
+    if (this.usePostgres) {
+      if (!this.pool) return undefined;
+      const res = await this.pool.query("SELECT * FROM settings WHERE user_id = $1", [userId]);
+      if (res.rowCount === 0) return undefined;
+      const row = res.rows[0];
+      return {
+        id: row.id,
+        user_id: row.user_id,
+        llm_provider: row.llm_provider,
+        llm_model: row.llm_model,
+        llm_api_key: row.llm_api_key,
+        enabled_integrations: row.enabled_integrations || '[]',
+        created_at: row.created_at ? new Date(row.created_at).toISOString() : '',
+      };
+    }
     return this.data.settings.find((s) => s.user_id === userId);
   }
 
@@ -211,12 +316,63 @@ class GitHubStore {
     userId: number,
     patch: Partial<Pick<SettingsRecord, "llm_provider" | "llm_model" | "llm_api_key" | "enabled_integrations">>
   ): Promise<SettingsRecord> {
+    if (this.usePostgres) {
+      if (!this.pool) throw new Error("Database not initialized");
+
+      const existing = await this.getSettings(userId);
+      if (existing) {
+        const updates: string[] = [];
+        const values: any[] = [];
+        let valIdx = 1;
+
+        if (patch.llm_provider !== undefined) {
+          updates.push(`llm_provider = $${valIdx++}`);
+          values.push(patch.llm_provider);
+        }
+        if (patch.llm_model !== undefined) {
+          updates.push(`llm_model = $${valIdx++}`);
+          values.push(patch.llm_model);
+        }
+        if (patch.llm_api_key !== undefined) {
+          updates.push(`llm_api_key = $${valIdx++}`);
+          values.push(null);
+        }
+        if (patch.enabled_integrations !== undefined) {
+          updates.push(`enabled_integrations = $${valIdx++}`);
+          values.push(patch.enabled_integrations);
+        }
+
+        if (updates.length > 0) {
+          values.push(userId);
+          await this.pool.query(
+            `UPDATE settings SET ${updates.join(', ')} WHERE user_id = $${valIdx}`,
+            values
+          );
+        }
+      } else {
+        await this.pool.query(
+          `INSERT INTO settings (user_id, llm_provider, llm_model, llm_api_key, enabled_integrations)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            userId,
+            patch.llm_provider ?? null,
+            patch.llm_model ?? null,
+            null,
+            patch.enabled_integrations ?? '[]'
+          ]
+        );
+      }
+
+      const updated = await this.getSettings(userId);
+      if (!updated) throw new Error("Upsert settings failed");
+      return updated;
+    }
+
     let record = this.data.settings.find((s) => s.user_id === userId);
 
     if (record) {
       if (patch.llm_provider !== undefined) record.llm_provider = patch.llm_provider;
       if (patch.llm_model !== undefined) record.llm_model = patch.llm_model;
-      // API keys are sensitive and must stay in process/.env only, never in store/db.json.
       if (patch.llm_api_key !== undefined) record.llm_api_key = null;
       if (patch.enabled_integrations !== undefined) record.enabled_integrations = patch.enabled_integrations;
     } else {
@@ -238,17 +394,84 @@ class GitHubStore {
 
   // ── Notifications ────────────────────────────────────────────────────────
 
-  getNotification(id: number): NotificationRecord | undefined {
+  async getNotification(id: number): Promise<NotificationRecord | undefined> {
+    if (this.usePostgres) {
+      if (!this.pool) return undefined;
+      const res = await this.pool.query("SELECT * FROM notifications WHERE id = $1", [id]);
+      if (res.rowCount === 0) return undefined;
+      const row = res.rows[0];
+      return {
+        id: row.id,
+        user_id: row.user_id,
+        recipient_email: row.recipient_email,
+        subject: row.subject,
+        body: row.body,
+        send_at: row.send_at ? new Date(row.send_at).toISOString() : '',
+        sent_at: row.sent_at ? new Date(row.sent_at).toISOString() : null,
+        status: row.status,
+        last_error: row.last_error,
+        recurrence_interval_minutes: row.recurrence_interval_minutes,
+        max_runs: row.max_runs,
+        run_count: row.run_count || 0,
+        last_sent_at: row.last_sent_at ? new Date(row.last_sent_at).toISOString() : null,
+        created_at: row.created_at ? new Date(row.created_at).toISOString() : '',
+      };
+    }
     return this.data.notifications.find((n) => n.id === id);
   }
 
-  getNotificationsByUser(userId: number): NotificationRecord[] {
+  async getNotificationsByUser(userId: number): Promise<NotificationRecord[]> {
+    if (this.usePostgres) {
+      if (!this.pool) return [];
+      const res = await this.pool.query(
+        "SELECT * FROM notifications WHERE user_id = $1 ORDER BY send_at DESC",
+        [userId]
+      );
+      return res.rows.map((row) => ({
+        id: row.id,
+        user_id: row.user_id,
+        recipient_email: row.recipient_email,
+        subject: row.subject,
+        body: row.body,
+        send_at: row.send_at ? new Date(row.send_at).toISOString() : '',
+        sent_at: row.sent_at ? new Date(row.sent_at).toISOString() : null,
+        status: row.status,
+        last_error: row.last_error,
+        recurrence_interval_minutes: row.recurrence_interval_minutes,
+        max_runs: row.max_runs,
+        run_count: row.run_count || 0,
+        last_sent_at: row.last_sent_at ? new Date(row.last_sent_at).toISOString() : null,
+        created_at: row.created_at ? new Date(row.created_at).toISOString() : '',
+      }));
+    }
     return this.data.notifications
       .filter((n) => n.user_id === userId)
       .sort((a, b) => new Date(b.send_at).getTime() - new Date(a.send_at).getTime());
   }
 
-  getPendingNotifications(): NotificationRecord[] {
+  async getPendingNotifications(): Promise<NotificationRecord[]> {
+    if (this.usePostgres) {
+      if (!this.pool) return [];
+      const res = await this.pool.query(
+        "SELECT * FROM notifications WHERE sent_at IS NULL AND status = 'pending'"
+      );
+      return res.rows.map((row) => ({
+        id: row.id,
+        user_id: row.user_id,
+        recipient_email: row.recipient_email,
+        subject: row.subject,
+        body: row.body,
+        send_at: row.send_at ? new Date(row.send_at).toISOString() : '',
+        sent_at: row.sent_at ? new Date(row.sent_at).toISOString() : null,
+        status: row.status,
+        last_error: row.last_error,
+        recurrence_interval_minutes: row.recurrence_interval_minutes,
+        max_runs: row.max_runs,
+        run_count: row.run_count || 0,
+        last_sent_at: row.last_sent_at ? new Date(row.last_sent_at).toISOString() : null,
+        created_at: row.created_at ? new Date(row.created_at).toISOString() : '',
+      }));
+    }
     return this.data.notifications.filter(
       (n) => n.sent_at === null && n.status === "pending"
     );
@@ -259,6 +482,28 @@ class GitHubStore {
     data: Pick<NotificationRecord, "recipient_email" | "subject" | "body" | "send_at"> &
       Partial<Pick<NotificationRecord, "recurrence_interval_minutes" | "max_runs">>
   ): Promise<NotificationRecord> {
+    if (this.usePostgres) {
+      if (!this.pool) throw new Error("Database not initialized");
+
+      const res = await this.pool.query(
+        `INSERT INTO notifications (user_id, recipient_email, subject, body, send_at, recurrence_interval_minutes, max_runs, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING id`,
+        [
+          userId,
+          data.recipient_email,
+          data.subject,
+          data.body,
+          data.send_at,
+          data.recurrence_interval_minutes ?? null,
+          data.max_runs ?? null
+        ]
+      );
+
+      const created = await this.getNotification(res.rows[0].id);
+      if (!created) throw new Error("Create notification failed");
+      return created;
+    }
+
     const record: NotificationRecord = {
       id: this.data._nextIds.notifications++,
       user_id: userId,
@@ -285,12 +530,54 @@ class GitHubStore {
     id: number,
     patch: Partial<NotificationRecord>
   ): Promise<void> {
+    if (this.usePostgres) {
+      if (!this.pool) return;
+
+      const updates: string[] = [];
+      const values: any[] = [];
+      let valIdx = 1;
+
+      for (const [key, val] of Object.entries(patch)) {
+        if (key === 'id') continue;
+        updates.push(`${key} = $${valIdx++}`);
+        values.push(val);
+      }
+
+      if (updates.length > 0) {
+        values.push(id);
+        await this.pool.query(
+          `UPDATE notifications SET ${updates.join(', ')} WHERE id = $${valIdx}`,
+          values
+        );
+      }
+      return;
+    }
+
     const record = this.data.notifications.find((n) => n.id === id);
     if (!record) return;
     Object.assign(record, patch);
     this.scheduleSave();
   }
 
+  // ── Cleanup ──────────────────────────────────────────────────────────────
+
+  async flush(): Promise<void> {
+    if (this.usePostgres) {
+      if (this.pool) {
+        await this.pool.end();
+        this.pool = null;
+        this.initialized = false;
+        console.log("[store] Neon Database connection pool closed");
+      }
+      return;
+    }
+
+    if (this.syncTimeout) {
+      clearTimeout(this.syncTimeout);
+      this.syncTimeout = null;
+    }
+    await this.saveToGitHub();
+  }
 }
 
 // ── Singleton ────────────────────────────────────────────────────────────────

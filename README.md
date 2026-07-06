@@ -329,7 +329,9 @@ OPENROUTER_API_KEY=
 OPENAI_API_KEY=
 
 # Persistence
-NudgeBot uses a **zero-dependency GitHub-backed store**. No SQLite or PostgreSQL is required. All users, settings, and notifications are synced to a private JSON file in your GitHub account.
+# By default, NudgeBot uses a zero-dependency GitHub-backed store (all settings/notifications are synced to a private JSON file in your GitHub account).
+# Optionally, you can connect it to a Neon PostgreSQL database for faster operations and better scheduling:
+DATABASE_URL= # (Optional) postgresql://... connection string to your Neon Database
 
 # Agent workspace
 NUDGEBOT_WORKDIR=./workspace

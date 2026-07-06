@@ -5,13 +5,32 @@ import { applyContextBudget, getMaxInputTokensFromEnv } from '../lib/agent/conte
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { toWellFormedUnicode } from '../lib/githubContextManager.js';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 
 const router = Router();
 
+const getWorkspaceRoot = (): string => {
+  const envWorkdir = (process.env.NUDGEBOT_WORKDIR || '').trim();
+  if (envWorkdir) {
+    try {
+      fsSync.mkdirSync(envWorkdir, { recursive: true });
+      return envWorkdir;
+    } catch (err) {
+      console.warn(`[workspace] Configured workdir '${envWorkdir}' is not writable, falling back to local workspace.`);
+    }
+  }
+  const fallback = path.join(process.cwd(), 'workspace');
+  try {
+    fsSync.mkdirSync(fallback, { recursive: true });
+  } catch (err) {
+    // ignore
+  }
+  return fallback;
+};
+
 const getLocalHistoryPath = (userId: string) => {
-  const workdir = (process.env.NUDGEBOT_WORKDIR || path.join(process.cwd(), 'workspace')).trim();
-  return path.join(workdir, `history_${userId}.json`);
+  return path.join(getWorkspaceRoot(), `history_${userId}.json`);
 };
 
 const getLLMConfigFromEnv = () => {
@@ -178,7 +197,7 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
 
     // Load user settings from store
     const store = await getStore();
-    const userSettings = userId ? store.getSettings(userId) : undefined;
+    const userSettings = userId ? await store.getSettings(userId) : undefined;
 
     const envConfig = getLLMConfigFromEnv();
     const provider = userSettings?.llm_provider || envConfig.provider;
