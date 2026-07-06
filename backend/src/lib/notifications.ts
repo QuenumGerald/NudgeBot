@@ -119,6 +119,10 @@ const processNotificationById = async (notificationId: number) => {
 const reconcilePendingNotifications = async () => {
   console.log('[notifications] reconcilePendingNotifications started');
   const store = await getStore();
+  
+  // Periodically check and prune Neon database size if approaching 500MB
+  await store.checkAndPruneDatabase();
+
   const pending = await store.getPendingNotifications();
   console.log(`[notifications] found ${pending.length} pending notifications`);
 

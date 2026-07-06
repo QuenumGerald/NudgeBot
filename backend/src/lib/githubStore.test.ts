@@ -158,4 +158,22 @@ describe('GitHubStore - Neon Postgres Mode', () => {
     expect(settings.user_id).toBe(1);
     expect(settings.llm_provider).toBe('deepseek');
   });
+
+  it('should prune old notifications if Postgres size exceeds the limit', async () => {
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // init
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 1, email: 'admin' }] }); // check admin
+    const store = await getStore();
+
+    // Mock pg_database_size query to return 460MB (exceeding 450MB limit)
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ size_bytes: 460 * 1024 * 1024 }] });
+    // Mock DELETE query return
+    mockQuery.mockResolvedValueOnce({ rowCount: 15, rows: [] });
+
+    await store.checkAndPruneDatabase();
+
+    // Check that we issued the DELETE query
+    expect(mockQuery).toHaveBeenLastCalledWith(
+      "DELETE FROM notifications WHERE sent_at IS NOT NULL OR status IN ('sent', 'failed', 'cancelled')"
+    );
+  });
 });

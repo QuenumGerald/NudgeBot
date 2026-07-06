@@ -559,6 +559,33 @@ class GitHubStore {
     this.scheduleSave();
   }
 
+  async checkAndPruneDatabase(): Promise<void> {
+    if (!this.usePostgres || !this.pool) return;
+
+    try {
+      const res = await this.pool.query("SELECT pg_database_size(current_database()) AS size_bytes");
+      if (res.rowCount !== null && res.rowCount > 0) {
+        const sizeBytes = Number(res.rows[0].size_bytes);
+        const limitBytes = 450 * 1024 * 1024; // 450 MB (90% of 500MB)
+        
+        // Log size checks occasionally
+        if (Math.random() < 0.1) {
+          console.log(`[store] Neon Database size check: ${(sizeBytes / (1024 * 1024)).toFixed(2)} MB / 500 MB`);
+        }
+
+        if (sizeBytes > limitBytes) {
+          console.warn(`[store] Neon Database size (${(sizeBytes / (1024 * 1024)).toFixed(2)} MB) is close to 500MB limit. Pruning old notifications...`);
+          const deleteRes = await this.pool.query(
+            "DELETE FROM notifications WHERE sent_at IS NOT NULL OR status IN ('sent', 'failed', 'cancelled')"
+          );
+          console.log(`[store] Pruned ${deleteRes.rowCount} historical notifications to free up database space.`);
+        }
+      }
+    } catch (err) {
+      console.error("[store] Failed to check database size or prune notifications:", err);
+    }
+  }
+
   // ── Cleanup ──────────────────────────────────────────────────────────────
 
   async flush(): Promise<void> {
