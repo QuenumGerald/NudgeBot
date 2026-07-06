@@ -176,4 +176,27 @@ describe('GitHubStore - Neon Postgres Mode', () => {
       "DELETE FROM notifications WHERE sent_at IS NOT NULL OR status IN ('sent', 'failed', 'cancelled')"
     );
   });
+
+  it('should not prune or query size if DISABLE_DB_PRUNING is true', async () => {
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // init
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 1, email: 'admin' }] }); // check admin
+    const store = await getStore();
+
+    // Enable DISABLE_DB_PRUNING env variable
+    vi.stubGlobal('process', {
+      ...process,
+      env: {
+        ...process.env,
+        DATABASE_URL: 'postgresql://test-user:test-pass@ep-test.neon.tech/neondb',
+        DISABLE_DB_PRUNING: 'true',
+      },
+    });
+
+    mockQuery.mockReset(); // Reset queries before check
+
+    await store.checkAndPruneDatabase();
+
+    // Verify pg query was never called
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
 });

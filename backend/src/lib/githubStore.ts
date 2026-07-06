@@ -560,6 +560,9 @@ class GitHubStore {
   }
 
   async checkAndPruneDatabase(): Promise<void> {
+    if (process.env.DISABLE_DB_PRUNING === 'true') {
+      return;
+    }
     if (!this.usePostgres || !this.pool) return;
 
     try {

@@ -342,6 +342,7 @@ JULES_API_KEY=
 # Email notifications
 RESEND_API_KEY=
 RESEND_FROM_EMAIL=notifications@your-domain.com
+DISABLE_DB_PRUNING=false        # Set to true to disable Neon Postgres database size check and auto-pruning
 
 # GitHub (Master access)
 GITHUB_TOKEN=                   # Master PAT (repo scope)
