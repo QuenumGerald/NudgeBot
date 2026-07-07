@@ -400,30 +400,31 @@ export const executeCommandTool = createTool({
 
 export const julesSessionTool = createTool({
   id: "run_jules_session",
-  description: "Launches a Google Jules coding session in a fire-and-forget manner. Returns the session ID immediately. Does not wait for completion.",
+  description: "Launches a Google Jules automated coding run in start mode (fire-and-forget) and returns the session ID immediately. Does not wait for completion.",
   inputSchema: z.object({
     prompt: z.string().describe("Task prompt sent to Jules."),
+    title: z.string().optional().describe("Short title displayed in Jules for the session."),
     githubRepository: z.string().optional().describe("GitHub repository in owner/repo format."),
     baseBranch: z.string().optional().describe("Base branch for Jules work."),
     autoPr: z.boolean().default(true).describe("Whether Jules should automatically create a pull request."),
     requireApproval: z.boolean().default(false).describe("Whether Jules should pause and wait for plan approval. Set to false (default) to run immediately (start mode)."),
   }),
-  execute: async ({ prompt, githubRepository, baseBranch, autoPr, requireApproval }) => {
+  execute: async ({ prompt, title, githubRepository, baseBranch, autoPr, requireApproval }) => {
     if (!process.env.JULES_API_KEY) {
       throw new Error("JULES_API_KEY is missing. Configure it before using this tool.");
     }
 
     try {
       const { jules } = await import("@google/jules-sdk");
-      const sessionConfig: any = { prompt, autoPr, requireApproval };
+      const sessionConfig: any = { prompt, title, autoPr, requireApproval };
 
       if (githubRepository) {
         sessionConfig.source = { github: githubRepository, baseBranch: baseBranch || "main" };
       }
 
-      const session = await jules.session(sessionConfig);
+      const automatedSession = await jules.run(sessionConfig);
 
-      return `Jules session launched successfully (fire-and-forget). Session ID: ${session.id}`;
+      return `Jules session launched successfully in automated start mode (fire-and-forget). Session ID: ${automatedSession.id}`;
     } catch (e: any) {
       const errorCode = e?.code;
       if (errorCode === "ERR_MODULE_NOT_FOUND" || /@google\/jules-sdk/.test(e?.message || "")) {
