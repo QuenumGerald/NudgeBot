@@ -3,14 +3,23 @@ import { Sidebar } from './Sidebar';
 import { ChatArea } from './ChatArea';
 import { Message } from './MessageBubble';
 
+interface ChatConversation {
+  id: string;
+  title: string;
+  updated_at: string;
+}
+
 interface ChatLayoutProps {
   messages: Message[];
+  conversations: ChatConversation[];
+  activeConversationId: string | null;
   isThinking: boolean;
   activeToolName: string | null;
   isRequestInFlight: boolean;
   queuedMessages: string[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   handleNewConversation: () => void;
+  handleSelectConversation: (conversationId: string) => void;
   handleLogout: () => void;
   // Input props
   input: string;
@@ -25,12 +34,15 @@ interface ChatLayoutProps {
 
 export function ChatLayout({
   messages,
+  conversations,
+  activeConversationId,
   isThinking,
   activeToolName,
   isRequestInFlight,
   queuedMessages,
   messagesEndRef,
   handleNewConversation,
+  handleSelectConversation,
   handleLogout,
   input,
   setInput,
@@ -48,7 +60,10 @@ export function ChatLayout({
       <Sidebar
         isMobileMenuOpen={isMobileMenuOpen}
         setIsMobileMenuOpen={setIsMobileMenuOpen}
+        conversations={conversations}
+        activeConversationId={activeConversationId}
         handleNewConversation={handleNewConversation}
+        handleSelectConversation={handleSelectConversation}
         handleLogout={handleLogout}
       />
 
