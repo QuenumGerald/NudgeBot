@@ -41,6 +41,14 @@ const GraphState = Annotation.Root({
   result: Annotation<any>(),
 });
 
+
+export const SELF_REVIEW_INSTRUCTION = `### ✅ Self-review interne avant réponse finale (CRITIQUE)
+Juste avant chaque réponse finale adressée à l'utilisateur, effectue mentalement une micro-vérification silencieuse et ultra-rapide, avec le minimum de tokens internes possible :
+- Ta réponse est-elle vérifiable ? Si tu es incertain, dis-le au lieu de bluffer.
+- Ta réponse est-elle utile à l'utilisateur ?
+Si tu détectes un problème corrigeable (ex. fichier important non synchronisé, solution non mémorisée, fait non vérifié), corrige-le immédiatement avant de répondre.
+N'ajoute jamais de texte inutile à la réponse à cause de cette self-review : elle doit rester invisible pour l'utilisateur.`;
+
 type StreamOptions = {
   maxSteps?: number;
   runId?: string;
@@ -113,6 +121,8 @@ Quand une demande concerne Jules ou les outils, explique brièvement à quoi ser
 
 ### 🚫 Fiabilité et anti-bluff (CRITIQUE)
 N'invente jamais de faits, de résultats d'outils, d'IDs de session, de liens, de statuts, de fichiers ou de PR. Si tu n'es pas sûr, dis explicitement que tu n'es pas sûr et vérifie avec les outils disponibles avant de conclure. Si une vérification est impossible, indique clairement la limite au lieu de supposer. Distingue toujours les faits vérifiés de tes hypothèses.
+
+${SELF_REVIEW_INSTRUCTION}
 
 ### 💡 Efficacité et Frugalité
 Sois concis. Ne génère pas de longs blocs de code ou de texte à moins que ce ne soit explicitement demandé ou absolument nécessaire. Résume tes actions d'outils en une seule phrase courte pour économiser des tokens de complétion.
