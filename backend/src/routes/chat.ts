@@ -39,6 +39,7 @@ const getAgentMaxSteps = (): number => {
 };
 
 type ChatBody = {
+  conversation_id?: string;
   messages?: Array<{ role?: string; content?: string }>;
 };
 
@@ -99,6 +100,55 @@ Sois extrêmement concis et direct. Écris en français.`;
 }
 
 
+router.get('/conversations', async (req: AuthenticatedRequest, res: ExpressResponse) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  try {
+    const store = await getStore();
+    res.json({ conversations: await store.listChatConversations(userId) });
+  } catch (error) {
+    console.error('[chat] conversations error:', error);
+    res.status(500).json({ error: 'Failed to load conversations' });
+  }
+});
+
+router.post('/conversations', async (req: AuthenticatedRequest, res: ExpressResponse) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  try {
+    const store = await getStore();
+    res.status(201).json({ conversation: await store.createChatConversation(userId) });
+  } catch (error) {
+    console.error('[chat] create conversation error:', error);
+    res.status(500).json({ error: 'Failed to create conversation' });
+  }
+});
+
+router.get('/conversations/:conversationId/history', async (req: AuthenticatedRequest, res: ExpressResponse) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  try {
+    const store = await getStore();
+    const messagesJson = await store.getChatConversationHistory(userId, String(req.params.conversationId));
+    res.json({ messages: messagesJson ? JSON.parse(messagesJson) : [] });
+  } catch (error) {
+    console.error('[chat] conversation history error:', error);
+    res.status(500).json({ error: 'Failed to load conversation history' });
+  }
+});
+
 router.get('/history', async (req: AuthenticatedRequest, res: ExpressResponse) => {
   const userId = req.user?.id;
   if (!userId) {
@@ -123,13 +173,14 @@ router.get('/history', async (req: AuthenticatedRequest, res: ExpressResponse) =
 
 router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, ChatBody>, res: ExpressResponse) => {
 
-  const { messages } = req.body;
+  const { conversation_id: conversationId, messages } = req.body;
   const userId = req.user?.id;
 
   console.log('[chat] request', {
     hasMessages: Array.isArray(messages),
     messageCount: Array.isArray(messages) ? messages.length : 0,
     user_id: userId,
+    conversation_id: conversationId,
   });
 
   if (!messages || !Array.isArray(messages)) {
@@ -290,7 +341,11 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
 
       // 1. Save history to the store (Neon Postgres or local fallback)
       const store = await getStore();
-      await store.saveChatHistory(Number(userId), JSON.stringify(allMessages, null, 2));
+      if (conversationId) {
+        await store.saveChatConversationHistory(Number(userId), conversationId, JSON.stringify(allMessages, null, 2));
+      } else {
+        await store.saveChatHistory(Number(userId), JSON.stringify(allMessages, null, 2));
+      }
 
       // 2. Save compressed summary context to GitHub
       const { getGitHubContextManager } = await import('../lib/githubContextManager.js');

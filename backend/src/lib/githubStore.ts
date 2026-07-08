@@ -5,6 +5,7 @@
 import pg from 'pg';
 import fs from 'fs/promises';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { initGitHubContextManager, getGitHubMemoryManager } from './githubContextManager.js';
 
 const { Pool } = pg;
@@ -129,6 +130,15 @@ class GitHubStore {
           CREATE TABLE IF NOT EXISTS chat_history (
             user_id INTEGER PRIMARY KEY,
             messages TEXT NOT NULL DEFAULT '[]',
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS chat_conversations (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL DEFAULT 'New chat',
+            messages TEXT NOT NULL DEFAULT '[]',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
         `);
@@ -625,6 +635,130 @@ class GitHubStore {
     if (!record) return;
     Object.assign(record, patch);
     this.scheduleSave();
+  }
+
+  private getConversationIndexPath(userId: number): string {
+    return path.join(process.cwd(), 'workspace', `conversations_${userId}.json`);
+  }
+
+  private getConversationHistoryPath(userId: number, conversationId: string): string {
+    const safeConversationId = conversationId.replace(/[^a-zA-Z0-9_-]/g, '_');
+    return path.join(process.cwd(), 'workspace', `history_${userId}_${safeConversationId}.json`);
+  }
+
+  private getConversationTitle(messagesJson: string): string {
+    try {
+      const messages = JSON.parse(messagesJson) as Array<{ role?: string; content?: string }>;
+      const firstUserMessage = messages.find((m) => m.role === 'user' && m.content?.trim());
+      const title = firstUserMessage?.content?.trim() || 'New chat';
+      return title.length > 60 ? `${title.slice(0, 57)}...` : title;
+    } catch {
+      return 'New chat';
+    }
+  }
+
+  async listChatConversations(userId: number): Promise<Array<{ id: string; title: string; updated_at: string }>> {
+    if (this.usePostgres && this.pool) {
+      try {
+        const res = await this.pool.query(
+          "SELECT id, title, updated_at FROM chat_conversations WHERE user_id = $1 ORDER BY updated_at DESC",
+          [userId]
+        );
+        return res.rows.map((row) => ({
+          id: String(row.id),
+          title: row.title || 'New chat',
+          updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
+        }));
+      } catch (err) {
+        console.error("[store] Error listing chat conversations from Postgres:", err);
+        return [];
+      }
+    }
+
+    try {
+      const content = await fs.readFile(this.getConversationIndexPath(userId), 'utf-8');
+      const conversations = JSON.parse(content) as Array<{ id: string; title: string; updated_at: string }>;
+      return conversations.sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
+    } catch {
+      return [];
+    }
+  }
+
+  async createChatConversation(userId: number): Promise<{ id: string; title: string; updated_at: string }> {
+    const conversation = { id: randomUUID(), title: 'New chat', updated_at: new Date().toISOString() };
+
+    if (this.usePostgres && this.pool) {
+      try {
+        await this.pool.query(
+          "INSERT INTO chat_conversations (id, user_id, title, messages, created_at, updated_at) VALUES ($1, $2, $3, '[]', NOW(), NOW())",
+          [conversation.id, userId, conversation.title]
+        );
+      } catch (err) {
+        console.error("[store] Error creating chat conversation in Postgres:", err);
+      }
+      return conversation;
+    }
+
+    const conversations = await this.listChatConversations(userId);
+    const updated = [conversation, ...conversations];
+    await fs.mkdir(path.dirname(this.getConversationIndexPath(userId)), { recursive: true });
+    await fs.writeFile(this.getConversationIndexPath(userId), JSON.stringify(updated, null, 2), 'utf-8');
+    await fs.writeFile(this.getConversationHistoryPath(userId, conversation.id), '[]', 'utf-8');
+    return conversation;
+  }
+
+  async getChatConversationHistory(userId: number, conversationId: string): Promise<string | null> {
+    if (this.usePostgres && this.pool) {
+      try {
+        const res = await this.pool.query(
+          "SELECT messages FROM chat_conversations WHERE user_id = $1 AND id = $2",
+          [userId, conversationId]
+        );
+        if (res.rowCount !== null && res.rowCount > 0) {
+          return res.rows[0].messages;
+        }
+      } catch (err) {
+        console.error("[store] Error getting chat conversation from Postgres:", err);
+      }
+      return null;
+    }
+
+    try {
+      return await fs.readFile(this.getConversationHistoryPath(userId, conversationId), 'utf-8');
+    } catch {
+      return null;
+    }
+  }
+
+  async saveChatConversationHistory(userId: number, conversationId: string, messagesJson: string): Promise<void> {
+    const title = this.getConversationTitle(messagesJson);
+    const updatedAt = new Date().toISOString();
+
+    if (this.usePostgres && this.pool) {
+      try {
+        await this.pool.query(
+          "INSERT INTO chat_conversations (id, user_id, title, messages, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW()) ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, messages = EXCLUDED.messages, updated_at = EXCLUDED.updated_at",
+          [conversationId, userId, title, messagesJson]
+        );
+      } catch (err) {
+        console.error("[store] Error saving chat conversation to Postgres:", err);
+      }
+      return;
+    }
+
+    try {
+      await fs.mkdir(path.dirname(this.getConversationIndexPath(userId)), { recursive: true });
+      await fs.writeFile(this.getConversationHistoryPath(userId, conversationId), messagesJson, 'utf-8');
+      const conversations = await this.listChatConversations(userId);
+      const withoutCurrent = conversations.filter((c) => c.id !== conversationId);
+      await fs.writeFile(
+        this.getConversationIndexPath(userId),
+        JSON.stringify([{ id: conversationId, title, updated_at: updatedAt }, ...withoutCurrent], null, 2),
+        'utf-8'
+      );
+    } catch (err) {
+      console.error('[store] failed to save local conversation history:', err);
+    }
   }
 
   async getChatHistory(userId: number): Promise<string | null> {

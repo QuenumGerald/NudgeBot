@@ -40,6 +40,12 @@ interface SpeechRecognition extends EventTarget {
   stop: () => void;
 }
 
+interface ChatConversation {
+  id: string;
+  title: string;
+  updated_at: string;
+}
+
 interface ApiChatHistoryResponse {
   messages: Array<{
     role: 'user' | 'assistant';
@@ -56,6 +62,8 @@ export default function Home() {
   const [isRequestInFlight, setIsRequestInFlight] = useState(false);
   const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[]>([]);
@@ -63,7 +71,11 @@ export default function Home() {
   const navigate = useNavigate();
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const storageKey = `chat_messages_${user.id ?? 'anonymous'}`;
+  const conversationsStorageKey = `chat_conversations_${user.id ?? 'anonymous'}`;
+  const activeConversationStorageKey = `chat_active_conversation_${user.id ?? 'anonymous'}`;
+  const storageKey = activeConversationId
+    ? `chat_messages_${user.id ?? 'anonymous'}_${activeConversationId}`
+    : `chat_messages_${user.id ?? 'anonymous'}_draft`;
 
   useEffect(() => {
     const checkSetupAndAuth = async () => {
@@ -83,11 +95,14 @@ export default function Home() {
     void checkSetupAndAuth();
   }, [user.id, navigate]);
 
-  useEffect(() => {
-    if (!user.id) return;
+  const loadConversation = useCallback((conversationId: string) => {
+    setActiveConversationId(conversationId);
+    localStorage.setItem(activeConversationStorageKey, conversationId);
 
-    // Load local messages first for instant feedback
-    const savedMessages = localStorage.getItem(storageKey);
+    const conversationStorageKey = `chat_messages_${user.id ?? 'anonymous'}_${conversationId}`;
+    const savedMessages = localStorage.getItem(conversationStorageKey);
+    setMessages([]);
+
     if (savedMessages) {
       try {
         const parsed = JSON.parse(savedMessages) as Message[];
@@ -95,37 +110,61 @@ export default function Home() {
           setMessages(parsed);
         }
       } catch (error) {
-        console.error('Could not parse local messages:', error);
+        console.error('Could not parse local conversation messages:', error);
       }
     }
 
-    // Then fetch from server
-    api.get('/chat/history')
+    api.get(`/chat/conversations/${conversationId}/history`)
       .then((data: unknown) => {
         const typedData = data as ApiChatHistoryResponse;
-        if (typedData && typedData.messages && Array.isArray(typedData.messages) && typedData.messages.length > 0) {
-          // Normalize format if needed
+        if (typedData && Array.isArray(typedData.messages)) {
           const formatted = typedData.messages.map((m) => ({
             role: m.role,
             content: m.content || '',
             tools: m.tools
           }));
           setMessages(formatted);
-        } else if (typedData && typedData.messages && Array.isArray(typedData.messages) && typedData.messages.length === 0) {
-           // If remote is completely empty but local has something, push local to remote
-           const currentLocal = localStorage.getItem(storageKey);
-           if (currentLocal && JSON.parse(currentLocal).length > 0) {
-             const localMsgs = JSON.parse(currentLocal);
-             if (localMsgs.length > 0) {
-               console.log("Remote is empty, syncing local to remote in background...");
-               api.postStream('/chat', { user_id: user.id, messages: localMsgs })
-                 .catch((e: unknown) => console.error("Sync error:", e));
-             }
-           }
         }
       })
-      .catch((error: unknown) => console.error('Failed to load chat history:', error));
-  }, [user.id, storageKey]);
+      .catch((error: unknown) => console.error('Failed to load conversation history:', error));
+  }, [activeConversationStorageKey, user.id]);
+
+  const refreshConversations = useCallback(() => {
+    if (!user.id) return;
+
+    const savedConversations = localStorage.getItem(conversationsStorageKey);
+    if (savedConversations) {
+      try {
+        const parsed = JSON.parse(savedConversations) as ChatConversation[];
+        if (Array.isArray(parsed)) {
+          setConversations(parsed);
+        }
+      } catch (error) {
+        console.error('Could not parse local conversations:', error);
+      }
+    }
+
+    api.get('/chat/conversations')
+      .then((data: unknown) => {
+        const typedData = data as { conversations?: ChatConversation[] };
+        const remoteConversations = Array.isArray(typedData.conversations) ? typedData.conversations : [];
+        setConversations(remoteConversations);
+        localStorage.setItem(conversationsStorageKey, JSON.stringify(remoteConversations));
+
+        const savedActive = localStorage.getItem(activeConversationStorageKey);
+        const nextActive = savedActive && remoteConversations.some((c) => c.id === savedActive)
+          ? savedActive
+          : remoteConversations[0]?.id;
+        if (nextActive) {
+          loadConversation(nextActive);
+        }
+      })
+      .catch((error: unknown) => console.error('Failed to load conversations:', error));
+  }, [activeConversationStorageKey, conversationsStorageKey, loadConversation, user.id]);
+
+  useEffect(() => {
+    refreshConversations();
+  }, [refreshConversations]);
 
   useEffect(() => {
     if (!user.id) return;
@@ -215,9 +254,17 @@ export default function Home() {
     navigate('/login');
   };
 
-  const handleNewConversation = () => {
+  const handleNewConversation = async () => {
     setMessages([]);
-    localStorage.removeItem(storageKey);
+    try {
+      const data = await api.post('/chat/conversations', {}) as { conversation?: ChatConversation };
+      if (data.conversation) {
+        setConversations(prev => [data.conversation!, ...prev.filter(c => c.id !== data.conversation!.id)]);
+        loadConversation(data.conversation.id);
+      }
+    } catch (error) {
+      console.error('Failed to create conversation:', error);
+    }
   };
 
   const processMessage = useCallback(async (messageText: string) => {
@@ -232,8 +279,20 @@ export default function Home() {
     setActiveToolName(null);
 
     try {
+      let conversationId = activeConversationId;
+      if (!conversationId) {
+        const data = await api.post('/chat/conversations', {}) as { conversation?: ChatConversation };
+        conversationId = data.conversation?.id || null;
+        if (data.conversation) {
+          setConversations(prev => [data.conversation!, ...prev.filter(c => c.id !== data.conversation!.id)]);
+          setActiveConversationId(data.conversation.id);
+          localStorage.setItem(activeConversationStorageKey, data.conversation.id);
+        }
+      }
+
       const response = await api.postStream('/chat', {
         user_id: user.id,
+        conversation_id: conversationId,
         messages: newMessages.map(m => ({ role: m.role, content: m.content }))
       });
 
@@ -317,11 +376,12 @@ export default function Home() {
         setMessages([...newMessages, errorMsg]);
       }
     } finally {
+      refreshConversations();
       setIsThinking(false);
       setActiveToolName(null);
       setIsRequestInFlight(false);
     }
-  }, [user.id]);
+  }, [activeConversationId, activeConversationStorageKey, refreshConversations, user.id]);
 
   useEffect(() => {
     if (isRequestInFlight || queuedMessages.length === 0) return;
@@ -365,7 +425,10 @@ export default function Home() {
       isRequestInFlight={isRequestInFlight}
       queuedMessages={queuedMessages}
       messagesEndRef={messagesEndRef}
+      conversations={conversations}
+      activeConversationId={activeConversationId}
       handleNewConversation={handleNewConversation}
+      handleSelectConversation={loadConversation}
       handleLogout={handleLogout}
       input={input}
       setInput={setInput}

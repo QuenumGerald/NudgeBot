@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Copy, Check, Wrench, Sparkles } from 'lucide-react';
+import { Copy, Check, Wrench } from 'lucide-react';
 import type { Components } from 'react-markdown';
 
 interface ToolCall {

@@ -1,16 +1,25 @@
 import { Button } from '@/components/ui/button';
-import { LogOut, Settings as SettingsIcon, Plus, Moon, Sun, X, Sparkles } from 'lucide-react';
+import { LogOut, Settings as SettingsIcon, Plus, Moon, Sun, X, MessageSquare } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import { useNavigate } from 'react-router-dom';
 
+interface ChatConversation {
+  id: string;
+  title: string;
+  updated_at: string;
+}
+
 interface SidebarProps {
+  conversations: ChatConversation[];
+  activeConversationId: string | null;
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (open: boolean) => void;
   handleNewConversation: () => void;
+  handleSelectConversation: (conversationId: string) => void;
   handleLogout: () => void;
 }
 
-export function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen, handleNewConversation, handleLogout }: SidebarProps) {
+export function Sidebar({ conversations, activeConversationId, isMobileMenuOpen, setIsMobileMenuOpen, handleNewConversation, handleSelectConversation, handleLogout }: SidebarProps) {
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
 
@@ -40,9 +49,28 @@ export function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen, handleNewConver
 
         <div className="text-xs font-semibold text-muted-foreground mb-3 px-2 uppercase tracking-wider">Recent</div>
         <div className="space-y-1">
-           <div className="px-2 py-2 text-sm text-muted-foreground italic rounded-md">
-             No recent chats
-           </div>
+          {conversations.length === 0 ? (
+            <div className="px-2 py-2 text-sm text-muted-foreground italic rounded-md">
+              No recent chats
+            </div>
+          ) : conversations.map((conversation) => (
+            <button
+              key={conversation.id}
+              type="button"
+              onClick={() => {
+                handleSelectConversation(conversation.id);
+                setIsMobileMenuOpen(false);
+              }}
+              className={`w-full flex items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors ${
+                conversation.id === activeConversationId
+                  ? 'bg-primary/10 text-primary font-medium'
+                  : 'text-foreground/80 hover:bg-muted'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4 shrink-0" />
+              <span className="truncate">{conversation.title}</span>
+            </button>
+          ))}
         </div>
       </div>
 

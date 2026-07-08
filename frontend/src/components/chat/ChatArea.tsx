@@ -1,5 +1,5 @@
 import React, { RefObject } from 'react';
-import { Wrench, Send, Menu, Sparkles } from 'lucide-react';
+import { Wrench, Send, Menu } from 'lucide-react';
 import { MessageBubble, Message } from './MessageBubble';
 import { MessageInput } from './MessageInput';
 import { Button } from '@/components/ui/button';
