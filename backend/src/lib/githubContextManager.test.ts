@@ -9,7 +9,7 @@ describe('GitHubContextManager', () => {
             env: {
                 ...process.env,
                 GITHUB_TOKEN: 'test-token',
-                GITHUB_REPO: 'test-owner/test-repo',
+                GITHUB_MEMORY_REPO: 'test-owner/test-repo',
             },
         });
         vi.stubGlobal('fetch', vi.fn());

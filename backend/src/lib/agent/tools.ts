@@ -690,16 +690,16 @@ const notesCache = new Map<string, { content: string; timestamp: number }>();
 
 export const saveNoteTool = createTool({
   id: "save_note",
-  description: "Saves a note to the GitHub context repo. Useful for remembering things across sessions.",
+  description: "Saves a note to /notes/ in the GitHub memory repo. Useful for remembering things across sessions.",
   inputSchema: z.object({
     title: z.string().describe("Note title (used as filename)."),
     content: z.string().describe("Note content in markdown."),
   }),
   execute: async ({ title, content }) => {
     try {
-      const { getGitHubContextManager } = await import("../githubContextManager.js");
-      const mgr = getGitHubContextManager();
-      if (!mgr) throw new Error("GitHub context not configured.");
+      const { getGitHubMemoryManager } = await import("../githubContextManager.js");
+      const mgr = getGitHubMemoryManager();
+      if (!mgr) throw new Error("GitHub memory repo not configured. Please set GITHUB_MEMORY_REPO or configure a GitHub token so it can be auto-created.");
 
       const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       const filePath = `notes/${slug}.md`;
@@ -721,13 +721,13 @@ export const saveNoteTool = createTool({
 
 export const listNotesTool = createTool({
   id: "list_notes",
-  description: "Lists all notes saved in the GitHub context repo.",
+  description: "Lists all notes saved in /notes/ in the GitHub memory repo.",
   inputSchema: z.object({}),
   execute: async () => {
     try {
-      const { getGitHubContextManager } = await import("../githubContextManager.js");
-      const mgr = getGitHubContextManager();
-      if (!mgr) throw new Error("GitHub context not configured.");
+      const { getGitHubMemoryManager } = await import("../githubContextManager.js");
+      const mgr = getGitHubMemoryManager();
+      if (!mgr) throw new Error("GitHub memory repo not configured. Please set GITHUB_MEMORY_REPO or configure a GitHub token so it can be auto-created.");
 
       const baseUrl = (mgr as any).baseUrl as string;
       const headers = (mgr as any).headers as Record<string, string>;
@@ -766,15 +766,15 @@ export const listNotesTool = createTool({
 
 export const readNoteTool = createTool({
   id: "read_note",
-  description: "Reads a note from the GitHub context repo by title.",
+  description: "Reads a note from /notes/ in the GitHub memory repo by title.",
   inputSchema: z.object({
     title: z.string().describe("Note title to read."),
   }),
   execute: async ({ title }) => {
     try {
-      const { getGitHubContextManager } = await import("../githubContextManager.js");
-      const mgr = getGitHubContextManager();
-      if (!mgr) throw new Error("GitHub context not configured.");
+      const { getGitHubMemoryManager } = await import("../githubContextManager.js");
+      const mgr = getGitHubMemoryManager();
+      if (!mgr) throw new Error("GitHub memory repo not configured. Please set GITHUB_MEMORY_REPO or configure a GitHub token so it can be auto-created.");
 
       const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -924,23 +924,24 @@ export const getGitHubContentsTool = createTool({
 
 export const syncToWorkspaceTool = createTool({
   id: "sync_to_workspace",
-  description: "Syncs a local file from the workspace to the dedicated GitHub workspace repository for permanent storage.",
+  description: "Syncs a local file from the workspace to /workspace/ in the GitHub memory repository for permanent storage.",
   inputSchema: z.object({
     filePath: z.string().describe("Relative path to the file in the local workspace."),
     message: z.string().optional().describe("Optional commit message."),
   }),
   execute: async ({ filePath, message }) => {
     try {
-      const { getGitHubWorkspaceManager } = await import("../githubContextManager.js");
-      const mgr = getGitHubWorkspaceManager();
-      if (!mgr) throw new Error("Workspace GitHub repo not configured. Please set GITHUB_WORKSPACE_REPO.");
+      const { getGitHubMemoryManager } = await import("../githubContextManager.js");
+      const mgr = getGitHubMemoryManager();
+      if (!mgr) throw new Error("GitHub memory repo not configured. Please set GITHUB_MEMORY_REPO or configure a GitHub token so it can be auto-created.");
 
       const resolvedPath = resolveSafePath(filePath);
       const content = await fs.readFile(resolvedPath, "utf8");
 
-      const ok = await mgr.putFile(filePath, content, message || `Sync file: ${filePath}`);
+      const repoPath = `workspace/${filePath.replace(/^\/+/, "")}`;
+      const ok = await mgr.putFile(repoPath, content, message || `Sync file: ${filePath}`);
       if (!ok) throw new Error(`Failed to sync \`${filePath}\` to GitHub.`);
-      return `File \`${filePath}\` successfully synced to GitHub workspace repository (${mgr.repo}).`;
+      return `File \`${filePath}\` successfully synced to GitHub memory repository at \`${repoPath}\` (${mgr.repo}).`;
     } catch (e: any) {
       throw new Error(`Error during sync: ${e.message}`);
     }
