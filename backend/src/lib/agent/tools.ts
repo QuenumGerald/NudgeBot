@@ -699,7 +699,7 @@ export const saveNoteTool = createTool({
     try {
       const { getGitHubContextManager } = await import("../githubContextManager.js");
       const mgr = getGitHubContextManager();
-      if (!mgr) throw new Error("GitHub context not configured.");
+      if (!mgr) throw new Error("GitHub context (memory repo) not configured. The repo will be auto-created if the token has the required scope.");
 
       const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       const filePath = `notes/${slug}.md`;
@@ -933,7 +933,7 @@ export const syncToWorkspaceTool = createTool({
     try {
       const { getGitHubWorkspaceManager } = await import("../githubContextManager.js");
       const mgr = getGitHubWorkspaceManager();
-      if (!mgr) throw new Error("Workspace GitHub repo not configured. Please set GITHUB_WORKSPACE_REPO.");
+      if (!mgr) throw new Error("Workspace GitHub repo not configured. The repo will be auto-created if the token has the required scope.");
 
       const resolvedPath = resolveSafePath(filePath);
       const content = await fs.readFile(resolvedPath, "utf8");

@@ -197,9 +197,19 @@ export class GitHubContextManager {
 
     if (createRes.ok) {
       console.log(`[github-ctx] repo ${this.owner}/${this.repo} created`);
-      // Give GitHub a moment to initialise the default branch
-      await new Promise((r) => setTimeout(r, 2000));
-      return true;
+
+      // Retry loop to give GitHub time to initialise the default branch
+      for (let i = 0; i < 10; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        const retryRes = await fetch(`${this.baseUrl}`, { headers: this.headers });
+        if (retryRes.ok) {
+          console.log(`[github-ctx] repo ${this.owner}/${this.repo} is now accessible`);
+          return true;
+        }
+      }
+
+      console.error(`[github-ctx] repo ${this.owner}/${this.repo} was created but is still not accessible after 10s`);
+      return false;
     }
 
     const err = await createRes.text();
@@ -487,23 +497,68 @@ const createManager = async (token: string, repoConfig?: string, defaultName?: s
   }
 
   const manager = new GitHubContextManager(token, owner, repo);
-  await manager.ensureRepoExists();
+  const exists = await manager.ensureRepoExists();
+  if (!exists) {
+    console.warn(`[github-ctx] Failed to ensure existence of repo ${owner}/${repo}`);
+    return null;
+  }
   return manager;
 };
 
 const initManager = async (): Promise<void> => {
-  const token = (process.env.GITHUB_TOKEN || process.env.GITHUB_CONTEXT_TOKEN || "").trim();
+  const token = (
+    process.env.GITHUB_TOKEN ||
+    process.env.GITHUB_CONTEXT_TOKEN ||
+    process.env.GITHUB_PERSONAL_ACCESS_TOKEN ||
+    ""
+  ).trim();
 
   if (!token) {
     console.warn("[github-ctx] No token found. Dual-repo persistence disabled.");
     return;
   }
 
-  memoryInstance = await createManager(token, process.env.GITHUB_MEMORY_REPO || process.env.GITHUB_REPO, "nudgebot-memory");
-  workspaceInstance = await createManager(token, process.env.GITHUB_WORKSPACE_REPO, "nudgebot-workspace");
+  // Resolve Memory Repo Configuration
+  let memoryRepoConfig = process.env.GITHUB_MEMORY_REPO;
+  let memoryUsedVar = "GITHUB_MEMORY_REPO";
+  if (!memoryRepoConfig) {
+    memoryRepoConfig = process.env.GITHUB_CONTEXT_REPO;
+    memoryUsedVar = "GITHUB_CONTEXT_REPO";
+  }
+  if (!memoryRepoConfig) {
+    memoryRepoConfig = process.env.GITHUB_REPO;
+    memoryUsedVar = "GITHUB_REPO";
+  }
+  if (memoryRepoConfig) {
+    console.log(`[github-ctx] Using ${memoryUsedVar} for memory repo configuration.`);
+  }
 
-  if (memoryInstance) console.log(`[github-ctx] Memory repo: ${memoryInstance.repo}`);
-  if (workspaceInstance) console.log(`[github-ctx] Workspace repo: ${workspaceInstance.repo}`);
+  memoryInstance = await createManager(token, memoryRepoConfig, "nudgebot-memory");
+
+  // Resolve Workspace Repo Configuration
+  let workspaceRepoConfig = process.env.GITHUB_WORKSPACE_REPO;
+  let workspaceUsedVar = "GITHUB_WORKSPACE_REPO";
+  if (!workspaceRepoConfig) {
+    workspaceRepoConfig = process.env.GITHUB_WORKSPACE;
+    workspaceUsedVar = "GITHUB_WORKSPACE";
+  }
+  if (workspaceRepoConfig) {
+    console.log(`[github-ctx] Using ${workspaceUsedVar} for workspace repo configuration.`);
+  }
+
+  workspaceInstance = await createManager(token, workspaceRepoConfig, "nudgebot-workspace");
+
+  if (memoryInstance) {
+    console.log(`[github-ctx] Memory repo: ${memoryInstance.repo}`);
+  } else {
+    console.warn(`[github-ctx] Failed to initialize memory repo.`);
+  }
+
+  if (workspaceInstance) {
+    console.log(`[github-ctx] Workspace repo: ${workspaceInstance.repo}`);
+  } else {
+    console.warn(`[github-ctx] Failed to initialize workspace repo.`);
+  }
 };
 
 export const initGitHubContextManager = (): Promise<void> => {
