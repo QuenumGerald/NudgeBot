@@ -31,7 +31,17 @@ services:
         value: https://api.deepseek.com
       - key: GITHUB_TOKEN
         sync: false
+      - key: GITHUB_CONTEXT_TOKEN
+        sync: false
+      - key: GITHUB_PERSONAL_ACCESS_TOKEN
+        sync: false
       - key: GITHUB_REPO
+        sync: false
+      - key: GITHUB_CONTEXT_REPO
+        sync: false
+      - key: GITHUB_MEMORY_REPO
+        sync: false
+      - key: GITHUB_WORKSPACE_REPO
         sync: false
       - key: JIRA_API_TOKEN
         sync: false
