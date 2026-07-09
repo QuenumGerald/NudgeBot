@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { getStore } from './lib/githubStore.js';
+import { getStore, getStoreSync } from './lib/githubStore.js';
 import { requireAuth } from './middleware/auth.js';
 
 dotenv.config();
@@ -14,6 +14,7 @@ import chatRouter from './routes/chat.js';
 import settingsRouter from './routes/settings.js';
 import notificationsRouter from './routes/notifications.js';
 import { startNotificationWorker } from './lib/notifications.js';
+import { initGitHubContextManager, flushGitHubContextManagers } from './lib/githubContextManager.js';
 import setupRouter from './routes/setup.js';
 
 const app = express();
@@ -41,11 +42,18 @@ app.use(
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Initialize store (loads data from GitHub)
-getStore().then(() => {
-  console.log('[store] initialized');
-  startNotificationWorker();
-}).catch(console.error);
+// Initialize store and GitHub context manager before accepting requests.
+const serverReady = getStore()
+  .then(async () => {
+    console.log('[store] initialized');
+    await initGitHubContextManager();
+    console.log('[github-ctx] initialized');
+    startNotificationWorker();
+  })
+  .catch((err) => {
+    console.error('[server] startup initialization failed:', err);
+    throw err;
+  });
 
 app.use('/api/setup', setupRouter);
 app.use('/api/auth', authRouter);
@@ -74,9 +82,6 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Flush store to GitHub on shutdown
-import { getStoreSync } from './lib/githubStore.js';
-import { flushGitHubContextManagers } from './lib/githubContextManager.js';
-
 const shutdown = async () => {
   const store = getStoreSync();
   if (store) {
@@ -94,6 +99,10 @@ const shutdown = async () => {
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+serverReady.then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}).catch(() => {
+  process.exit(1);
 });
