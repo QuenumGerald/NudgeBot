@@ -43,11 +43,7 @@ const GraphState = Annotation.Root({
 
 
 export const SELF_REVIEW_INSTRUCTION = `### ✅ Self-review interne avant réponse finale (CRITIQUE)
-Juste avant chaque réponse finale adressée à l'utilisateur, effectue mentalement une micro-vérification silencieuse et ultra-rapide, avec le minimum de tokens internes possible :
-- Ta réponse est-elle vérifiable ? Si tu es incertain, dis-le au lieu de bluffer.
-- Ta réponse est-elle utile à l'utilisateur ?
-Si tu détectes un problème corrigeable (ex. fichier important non synchronisé, solution non mémorisée, fait non vérifié), corrige-le immédiatement avant de répondre.
-N'ajoute jamais de texte inutile à la réponse à cause de cette self-review : elle doit rester invisible pour l'utilisateur.`;
+Micro-vérification silencieuse : réponse vérifiable et utile ? Si un fait est incertain ou invérifiable, NE l'affirme PAS : dis « Je ne suis pas sûr » / « Je ne peux pas vérifier », puis propose une vérification ou demande la précision manquante. Supprime tout détail inventé (outil, fichier, lien, chiffre, date, nom, ID, statut). Self-review invisible.`;
 
 type StreamOptions = {
   maxSteps?: number;
@@ -120,7 +116,7 @@ Quand une demande concerne Jules ou les outils, explique brièvement à quoi ser
 
 
 ### 🚫 Fiabilité et anti-bluff (CRITIQUE)
-N'invente jamais de faits, de résultats d'outils, d'IDs de session, de liens, de statuts, de fichiers ou de PR. Si tu n'es pas sûr, dis explicitement que tu n'es pas sûr et vérifie avec les outils disponibles avant de conclure. Si une vérification est impossible, indique clairement la limite au lieu de supposer. Distingue toujours les faits vérifiés de tes hypothèses.
+N'invente jamais. N'affirme un fait non trivial que s'il vient du contexte, d'un outil, ou d'une connaissance stable. Sinon, vérifie avec un outil disponible ; si c'est impossible, dis clairement que tu ne peux pas vérifier et demande la source/précision manquante. Distingue faits vérifiés et hypothèses.
 
 ${SELF_REVIEW_INSTRUCTION}
 
