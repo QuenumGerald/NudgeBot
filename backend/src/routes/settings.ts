@@ -57,7 +57,6 @@ router.get('/:userId', async (req: AuthenticatedRequest, res) => {
     const config = {
       github_token: process.env.GITHUB_TOKEN || '',
       github_memory_repo: process.env.GITHUB_MEMORY_REPO || '',
-      github_workspace_repo: process.env.GITHUB_WORKSPACE_REPO || '',
       jira_api_token: process.env.JIRA_API_TOKEN || '',
       jira_email: process.env.JIRA_EMAIL || '',
       jira_url: process.env.JIRA_URL || '',
@@ -109,7 +108,6 @@ router.post('/:userId', async (req: AuthenticatedRequest, res) => {
     enabled_integrations,
     github_token,
     github_memory_repo,
-    github_workspace_repo,
     jira_api_token,
     jira_email,
     jira_url,
@@ -141,7 +139,6 @@ router.post('/:userId', async (req: AuthenticatedRequest, res) => {
     }
     if (github_token !== undefined) updates.GITHUB_TOKEN = github_token;
     if (github_memory_repo !== undefined) updates.GITHUB_MEMORY_REPO = github_memory_repo;
-    if (github_workspace_repo !== undefined) updates.GITHUB_WORKSPACE_REPO = github_workspace_repo;
     if (jira_api_token !== undefined) updates.JIRA_API_TOKEN = jira_api_token;
     if (jira_email !== undefined) updates.JIRA_EMAIL = jira_email;
     if (jira_url !== undefined) updates.JIRA_URL = jira_url;
@@ -172,7 +169,6 @@ router.post('/:userId', async (req: AuthenticatedRequest, res) => {
         : [],
       github_token: process.env.GITHUB_TOKEN || '',
       github_memory_repo: process.env.GITHUB_MEMORY_REPO || '',
-      github_workspace_repo: process.env.GITHUB_WORKSPACE_REPO || '',
       jira_api_token: process.env.JIRA_API_TOKEN || '',
       jira_email: process.env.JIRA_EMAIL || '',
       jira_url: process.env.JIRA_URL || '',

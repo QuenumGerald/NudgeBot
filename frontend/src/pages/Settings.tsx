@@ -12,7 +12,6 @@ type SettingsState = {
   enabled_integrations: string[];
   github_token: string;
   github_memory_repo: string;
-  github_workspace_repo: string;
   jira_api_token: string;
   jira_email: string;
   jira_url: string;
@@ -36,7 +35,6 @@ export default function Settings() {
     enabled_integrations: [],
     github_token: '',
     github_memory_repo: '',
-    github_workspace_repo: '',
     jira_api_token: '',
     jira_email: '',
     jira_url: '',
@@ -68,7 +66,6 @@ export default function Settings() {
           enabled_integrations: data.enabled_integrations || [],
           github_token: data.github_token || '',
           github_memory_repo: data.github_memory_repo || '',
-          github_workspace_repo: data.github_workspace_repo || '',
           jira_api_token: data.jira_api_token || '',
           jira_email: data.jira_email || '',
           jira_url: data.jira_url || '',
@@ -198,14 +195,9 @@ export default function Settings() {
                                 onChange={(e) => setSettings(prev => ({ ...prev, github_memory_repo: e.target.value }))}
                                 placeholder="username/nudgebot-memory"
                               />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="text-xs text-muted-foreground">Workspace Repository</label>
-                              <Input
-                                value={settings.github_workspace_repo}
-                                onChange={(e) => setSettings(prev => ({ ...prev, github_workspace_repo: e.target.value }))}
-                                placeholder="username/nudgebot-workspace"
-                              />
+                              <p className="text-xs text-muted-foreground">
+                                Stores notes under /notes/ and synced workspace files under /workspace/.
+                              </p>
                             </div>
                           </>
                         )}

@@ -481,7 +481,6 @@ const resolveGitHubOwner = async (token: string): Promise<string | null> => {
 };
 
 let memoryInstance: GitHubContextManager | null = null;
-let workspaceInstance: GitHubContextManager | null = null;
 let initPromise: Promise<void> | null = null;
 
 const firstEnvValue = (names: string[]): { name: string; value: string } | null => {
@@ -530,28 +529,23 @@ const createManager = async (
 };
 
 const initManager = async (): Promise<void> => {
-  console.log("[github-ctx] starting dual-repo GitHub context initialisation...");
+  console.log("[github-ctx] starting GitHub memory repository initialisation...");
   const tokenConfig = firstEnvValue(["GITHUB_TOKEN", "GITHUB_CONTEXT_TOKEN", "GITHUB_PERSONAL_ACCESS_TOKEN"]);
 
   if (!tokenConfig) {
-    console.warn("[github-ctx] No token found. Dual-repo persistence disabled.");
+    console.warn("[github-ctx] No token found. GitHub persistence disabled.");
     return;
   }
   console.log(`[github-ctx] using token from ${tokenConfig.name}`);
 
-  const memoryRepoConfig = firstEnvValue(["GITHUB_MEMORY_REPO", "GITHUB_CONTEXT_REPO", "GITHUB_REPO"]);
-  const workspaceRepoConfig = firstEnvValue(["GITHUB_WORKSPACE_REPO"]);
+  const memoryRepoConfig = firstEnvValue(["GITHUB_MEMORY_REPO"]);
   const memoryRepo = memoryRepoConfig?.value ?? "nudgebot-memory";
-  const workspaceRepo = workspaceRepoConfig?.value ?? "nudgebot-workspace";
 
   console.log(`[github-ctx] memory repo source: ${memoryRepoConfig?.name ?? "default"} (${memoryRepo})`);
-  console.log(`[github-ctx] workspace repo source: ${workspaceRepoConfig?.name ?? "default"} (${workspaceRepo})`);
 
   memoryInstance = await createManager("memory", tokenConfig.value, memoryRepo);
-  workspaceInstance = await createManager("workspace", tokenConfig.value, workspaceRepo);
 
   if (memoryInstance) console.log(`[github-ctx] Memory repo ready: ${memoryInstance.repo}`);
-  if (workspaceInstance) console.log(`[github-ctx] Workspace repo ready: ${workspaceInstance.repo}`);
 };
 
 export const initGitHubContextManager = (): Promise<void> => {
@@ -560,7 +554,7 @@ export const initGitHubContextManager = (): Promise<void> => {
 };
 
 export const getGitHubMemoryManager = (): GitHubContextManager | null => memoryInstance;
-export const getGitHubWorkspaceManager = (): GitHubContextManager | null => workspaceInstance;
+export const getGitHubWorkspaceManager = (): GitHubContextManager | null => memoryInstance;
 
 // Compatibility aliases
 export const getGitHubContextManager = (): GitHubContextManager | null => memoryInstance;
@@ -569,13 +563,9 @@ export const flushGitHubContextManagers = async () => {
   if (memoryInstance) {
     await memoryInstance.flush();
   }
-  if (workspaceInstance) {
-    await workspaceInstance.flush();
-  }
 };
 
 export const resetManagerForTesting = () => {
   memoryInstance = null;
-  workspaceInstance = null;
   initPromise = null;
 };
