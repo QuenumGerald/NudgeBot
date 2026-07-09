@@ -175,15 +175,18 @@ export class GitHubContextManager {
   // ── Repo bootstrap ─────────────────────────────────────────────────────────
 
   async ensureRepoExists(): Promise<boolean> {
-    // Check if repo already exists
+    console.log(`[github-ctx] checking repository ${this.owner}/${this.repo}...`);
     const checkRes = await fetch(`${this.baseUrl}`, { headers: this.headers });
-    if (checkRes.ok) return true;
+    if (checkRes.ok) {
+      console.log(`[github-ctx] repository ${this.owner}/${this.repo} already exists`);
+      return true;
+    }
     if (checkRes.status !== 404) {
-      console.error(`[github-ctx] unexpected status checking repo: ${checkRes.status}`);
+      console.error(`[github-ctx] unexpected status checking repo ${this.owner}/${this.repo}: ${checkRes.status}`);
       return false;
     }
 
-    // Create the repo (private, auto-initialised with a README so it has a main branch)
+    console.log(`[github-ctx] repository ${this.owner}/${this.repo} not found; creating it...`);
     const createRes = await fetch(`https://api.github.com/user/repos`, {
       method: "POST",
       headers: this.headers,
@@ -195,15 +198,25 @@ export class GitHubContextManager {
       }),
     });
 
-    if (createRes.ok) {
-      console.log(`[github-ctx] repo ${this.owner}/${this.repo} created`);
-      // Give GitHub a moment to initialise the default branch
-      await new Promise((r) => setTimeout(r, 2000));
-      return true;
+    if (!createRes.ok) {
+      const err = await createRes.text();
+      console.error(`[github-ctx] failed to create repo ${this.owner}/${this.repo}: ${createRes.status} ${err}`);
+      return false;
     }
 
-    const err = await createRes.text();
-    console.error(`[github-ctx] failed to create repo: ${createRes.status} ${err}`);
+    console.log(`[github-ctx] repo ${this.owner}/${this.repo} created; waiting for GitHub to initialise it...`);
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
+      await new Promise((r) => setTimeout(r, 1000));
+      console.log(`[github-ctx] verification attempt ${attempt}/10 for ${this.owner}/${this.repo}`);
+      const verifyRes = await fetch(`${this.baseUrl}`, { headers: this.headers });
+      if (verifyRes.ok) {
+        console.log(`[github-ctx] repository ${this.owner}/${this.repo} is ready`);
+        return true;
+      }
+      console.log(`[github-ctx] repository ${this.owner}/${this.repo} not ready yet: ${verifyRes.status}`);
+    }
+
+    console.error(`[github-ctx] repository ${this.owner}/${this.repo} was created but is not ready after 10 attempts`);
     return false;
   }
 
@@ -471,39 +484,74 @@ let memoryInstance: GitHubContextManager | null = null;
 let workspaceInstance: GitHubContextManager | null = null;
 let initPromise: Promise<void> | null = null;
 
-const createManager = async (token: string, repoConfig?: string, defaultName?: string): Promise<GitHubContextManager | null> => {
+const firstEnvValue = (names: string[]): { name: string; value: string } | null => {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return { name, value };
+  }
+  return null;
+};
+
+const createManager = async (
+  label: "memory" | "workspace",
+  token: string,
+  repoConfig: string
+): Promise<GitHubContextManager | null> => {
+  console.log(`[github-ctx] configuring ${label} repository from value: ${repoConfig}`);
+
   let owner: string;
   let repo: string;
+  const parts = repoConfig.split("/").filter(Boolean);
 
-  if (repoConfig) {
-    const parts = repoConfig.split("/");
-    if (parts.length !== 2) return null;
+  if (parts.length === 2) {
     [owner, repo] = parts;
-  } else {
+  } else if (parts.length === 1) {
     const login = await resolveGitHubOwner(token);
-    if (!login) return null;
+    if (!login) {
+      console.error(`[github-ctx] unable to resolve GitHub owner for ${label} repository`);
+      return null;
+    }
     owner = login;
-    repo = defaultName || "nudgebot-data";
+    [repo] = parts;
+  } else {
+    console.error(`[github-ctx] invalid ${label} repository value: ${repoConfig}`);
+    return null;
   }
 
+  console.log(`[github-ctx] ${label} repository resolved to ${owner}/${repo}`);
   const manager = new GitHubContextManager(token, owner, repo);
-  await manager.ensureRepoExists();
+  const ready = await manager.ensureRepoExists();
+  if (!ready) {
+    console.error(`[github-ctx] ${label} repository ${owner}/${repo} is unavailable`);
+    return null;
+  }
+  console.log(`[github-ctx] ${label} repository ${owner}/${repo} is configured`);
   return manager;
 };
 
 const initManager = async (): Promise<void> => {
-  const token = (process.env.GITHUB_TOKEN || process.env.GITHUB_CONTEXT_TOKEN || "").trim();
+  console.log("[github-ctx] starting dual-repo GitHub context initialisation...");
+  const tokenConfig = firstEnvValue(["GITHUB_TOKEN", "GITHUB_CONTEXT_TOKEN", "GITHUB_PERSONAL_ACCESS_TOKEN"]);
 
-  if (!token) {
+  if (!tokenConfig) {
     console.warn("[github-ctx] No token found. Dual-repo persistence disabled.");
     return;
   }
+  console.log(`[github-ctx] using token from ${tokenConfig.name}`);
 
-  memoryInstance = await createManager(token, process.env.GITHUB_MEMORY_REPO || process.env.GITHUB_REPO, "nudgebot-memory");
-  workspaceInstance = await createManager(token, process.env.GITHUB_WORKSPACE_REPO, "nudgebot-workspace");
+  const memoryRepoConfig = firstEnvValue(["GITHUB_MEMORY_REPO", "GITHUB_CONTEXT_REPO", "GITHUB_REPO"]);
+  const workspaceRepoConfig = firstEnvValue(["GITHUB_WORKSPACE_REPO"]);
+  const memoryRepo = memoryRepoConfig?.value ?? "nudgebot-memory";
+  const workspaceRepo = workspaceRepoConfig?.value ?? "nudgebot-workspace";
 
-  if (memoryInstance) console.log(`[github-ctx] Memory repo: ${memoryInstance.repo}`);
-  if (workspaceInstance) console.log(`[github-ctx] Workspace repo: ${workspaceInstance.repo}`);
+  console.log(`[github-ctx] memory repo source: ${memoryRepoConfig?.name ?? "default"} (${memoryRepo})`);
+  console.log(`[github-ctx] workspace repo source: ${workspaceRepoConfig?.name ?? "default"} (${workspaceRepo})`);
+
+  memoryInstance = await createManager("memory", tokenConfig.value, memoryRepo);
+  workspaceInstance = await createManager("workspace", tokenConfig.value, workspaceRepo);
+
+  if (memoryInstance) console.log(`[github-ctx] Memory repo ready: ${memoryInstance.repo}`);
+  if (workspaceInstance) console.log(`[github-ctx] Workspace repo ready: ${workspaceInstance.repo}`);
 };
 
 export const initGitHubContextManager = (): Promise<void> => {
