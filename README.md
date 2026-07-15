@@ -12,6 +12,7 @@
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-20%2B-brightgreen?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js 20+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
   <a href="https://github.com/QuenumGerald/NudgeBot"><img src="https://img.shields.io/badge/TypeScript-5-blue?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"></a>
+  <a href="https://www.linkedin.com/in/g%C3%A9rald-quenum-00b965233"><img src="https://img.shields.io/badge/LinkedIn-G%C3%A9rald%20Quenum-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white" alt="LinkedIn profile"></a>
 </p>
 
 NudgeBot is a personal AI assistant built with React and Express. It keeps a compressed memory of your conversations, can store data locally, sync to a private GitHub repository, or use Neon Postgres, and lets you connect tools only when you need them.
