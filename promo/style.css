@@ -517,7 +517,14 @@ a {
   margin-bottom: 2rem;
 }
 
-.btn-github {
+.social-links {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.btn-social {
   display: inline-flex;
   align-items: center;
   gap: 0.75rem;
@@ -527,12 +534,21 @@ a {
   transition: all 0.2s ease;
 }
 
-.btn-github:hover {
+.btn-social:hover {
   background-color: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.3);
 }
 
-.btn-github-svg {
+.btn-linkedin {
+  border-color: rgba(10, 102, 194, 0.55);
+}
+
+.btn-linkedin:hover {
+  background-color: rgba(10, 102, 194, 0.16);
+  border-color: rgba(10, 102, 194, 0.9);
+}
+
+.btn-social-svg {
   fill: currentColor;
   width: 20px;
   height: 20px;
