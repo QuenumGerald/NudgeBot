@@ -1,28 +1,33 @@
-# 🐝 NudgeBot — Assistant IA Autonome
+# 🐝 NudgeBot — Personal AI Assistant
 
-NudgeBot est un assistant IA personnel (React + Express) conçu pour automatiser vos tâches tout en gardant un contrôle absolu sur vos données et vos coûts de tokens.
+<p align="center">
+  <img src="NudgeBot Logo.png" alt="NudgeBot logo" width="220">
+</p>
 
----
+<p align="center">
+  <strong>A self-hosted AI assistant that remembers useful context without wasting tokens.</strong>
+</p>
 
-## 🌟 Fonctionnalités Clés
+<p align="center">
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-20%2B-brightgreen?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js 20+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
+  <a href="https://github.com/QuenumGerald/NudgeBot"><img src="https://img.shields.io/badge/TypeScript-5-blue?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"></a>
+</p>
 
-- **Mémoire persistante compressée** : Résume intelligemment les sessions de chat pour économiser les tokens.
-- **Stockage hybride flexible** :
-  - **Mode par défaut** : Sauvegarde locale ou synchronisation sur votre dépôt GitHub privé (`store/db.json`).
-  - **Mode SQL Cloud** : Support natif de **Neon Postgres** avec migration transparente depuis GitHub et auto-nettoyage intelligent (pruning) pour rester sous la limite gratuite de 500 Mo.
-- **Serveurs MCP à la demande** : Connectez Jira, Confluence, Google Calendar, GitHub, Netlify ou Render depuis vos réglages.
-- **Délégation de code** : Intégration de **Google Jules** pour lui déléguer des tâches de programmation complexes directement sur vos dépôts GitHub.
-- **Notifications d'emails** : Planifiez des emails de rappels récurrents (via Resend).
+NudgeBot is a personal AI assistant built with React and Express. It keeps a compressed memory of your conversations, can store data locally, sync to a private GitHub repository, or use Neon Postgres, and lets you connect tools only when you need them.
 
----
+## What it does
 
-## 🚀 Démarrage Rapide
+- **Persistent memory:** summarizes past chats so the assistant can remember important context while keeping token usage low.
+- **Flexible storage:** use local JSON, private GitHub sync, or Neon Postgres with migration support and automatic pruning.
+- **On-demand MCP tools:** connect services like Jira, Confluence, Google Calendar, GitHub, Netlify, or Render from settings.
+- **Coding delegation:** send programming tasks to Google Jules for supported GitHub workflows.
+- **Email reminders:** schedule one-time or recurring reminder emails with Resend.
 
-### 1. Installation automatique
+## Quick start
 
-Clonez le projet et lancez l'installateur interactif :
+**macOS / Linux**
 
-**macOS & Linux :**
 ```bash
 git clone https://github.com/QuenumGerald/NudgeBot
 cd NudgeBot
@@ -30,7 +35,8 @@ cd NudgeBot
 npm run dev
 ```
 
-**Windows (PowerShell) :**
+**Windows PowerShell**
+
 ```powershell
 git clone https://github.com/QuenumGerald/NudgeBot
 cd NudgeBot
@@ -38,37 +44,36 @@ cd NudgeBot
 npm run dev
 ```
 
-L'application est accessible sur `http://localhost:3000`.
+Open `http://localhost:3000` after the server starts.
 
----
+## Main environment variables
 
-## ⚙️ Variables d'Environnement principales
-
-Configurez votre fichier `backend/.env` :
+Create or update `backend/.env`:
 
 ```env
-# Authentification
-ADMIN_PASSWORD=votre-mot-de-passe-admin
-JWT_SECRET=votre-cle-secrete-jwt
+ADMIN_PASSWORD=your-admin-password
+JWT_SECRET=your-secure-jwt-secret
 
-# Modèle de Langage (LLM)
-LLM_PROVIDER=deepseek      # deepseek, openai ou openrouter
+LLM_PROVIDER=deepseek      # deepseek, openai, or openrouter
 LLM_MODEL=deepseek-chat
-DEEPSEEK_API_KEY=votre-cle-api
+DEEPSEEK_API_KEY=your-api-key
 
-# Optionnel : Base de données Neon (PostgreSQL)
-DATABASE_URL=              # Connexion postgresql://...
-DISABLE_DB_PRUNING=false   # Définir à true pour désactiver le nettoyage automatique
+DATABASE_URL=              # optional Neon Postgres connection string
+DISABLE_DB_PRUNING=false
 
-# Optionnel : Google Jules (Coding Agent)
-JULES_API_KEY=
-
-# Optionnel : Email (Resend)
-RESEND_API_KEY=
-RESEND_FROM_EMAIL=notifications@votre-domaine.com
-
-# Optionnel : Synchronisation GitHub
-GITHUB_TOKEN=              # Token d'accès classique (PAT)
+JULES_API_KEY=             # optional Google Jules integration
+RESEND_API_KEY=            # optional email reminders
+RESEND_FROM_EMAIL=notifications@your-domain.com
+GITHUB_TOKEN=              # optional private GitHub sync
 ```
 
-Pour plus de détails sur les serveurs MCP ou le déploiement de production, consultez le fichier d'architecture [ARCHITECTURE.md](file:///home/nova/Documents/projects/NudgeBot/ARCHITECTURE.md).
+## Useful commands
+
+```bash
+npm run dev              # start the app in development
+npm run build            # build frontend and backend
+npm start                # run the compiled backend
+npm run uninstall        # remove generated local data and dependencies
+```
+
+For architecture and deployment details, see `ARCHITECTURE.md`.
