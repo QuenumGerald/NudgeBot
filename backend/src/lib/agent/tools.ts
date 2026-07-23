@@ -1,21 +1,30 @@
 import { tool as __originalCreateTool } from "ai";
 import type { ZodSchema } from "zod";
+import { runVerifiedAction, type ActionVerifier } from "./actaro.js";
 
 function createTool<T extends ZodSchema>(options: {
   id: string;
   description: string;
   inputSchema: T;
   execute: (params: z.infer<T>) => Promise<any> | any;
+  verify?: ActionVerifier<z.infer<T>>;
 }) {
   const originalExecute = options.execute;
   const wrappedExecute = async (params: z.infer<T>) => {
-    console.log(`[Tool Logger] Outil ${options.id} appelé avec paramètres:`, params);
+    console.log(`[Actaro Logger] Outil ${options.id} lancé via Actaro verification runner...`);
     try {
-      const result = await originalExecute(params);
-      console.log(`[Tool Logger] Outil ${options.id} terminé avec résultat:`, typeof result === 'string' && result.length > 200 ? result.substring(0, 200) + '...' : result);
-      return result;
+      const { output, receipt } = await runVerifiedAction({
+        name: options.id,
+        description: options.description,
+        inputSchema: options.inputSchema,
+        input: params,
+        execute: async (p) => await originalExecute(p),
+        verify: options.verify,
+      });
+      console.log(`[Actaro Logger] Outil ${options.id} terminé avec reçu status=${receipt.status}`);
+      return output;
     } catch (e: any) {
-      console.error(`[Tool Logger] Outil ${options.id} a échoué avec erreur:`, e.message);
+      console.error(`[Actaro Logger] Outil ${options.id} a échoué:`, e.message);
       throw e;
     }
   };
@@ -106,6 +115,15 @@ export const createProjectWorkspaceTool = createTool({
     } catch (e: any) {
       throw new Error(`Failed to create project workspace: ${e.message}`);
     }
+  },
+  verify: async ({ projectName }) => {
+    const projectsRoot = getProjectsRoot();
+    const normalized = normalizeProjectName(projectName);
+    const projectDir = path.join(projectsRoot, normalized);
+    const exists = fsSync.existsSync(projectDir);
+    return exists
+      ? { status: "verified" as const, evidence: { projectDir, exists: true } }
+      : { status: "failed" as const, reason: `Project directory ${projectDir} does not exist.` };
   },
 });
 
@@ -320,6 +338,22 @@ export const createFileTool = createTool({
       throw new Error(`Failed to create/update file: ${e.message}`);
     }
   },
+  verify: async ({ path: filePath, content, mode }) => {
+    try {
+      const resolvedPath = resolveSafePath(filePath);
+      if (!fsSync.existsSync(resolvedPath)) {
+        return { status: "failed" as const, reason: `File does not exist at ${filePath}` };
+      }
+      const stat = await fs.stat(resolvedPath);
+      const actualContent = await fs.readFile(resolvedPath, "utf8");
+      const isVerified = mode === "append" ? actualContent.includes(content) : actualContent === content;
+      return isVerified
+        ? { status: "verified" as const, evidence: { path: filePath, size: stat.size, mode } }
+        : { status: "failed" as const, reason: "File content mismatch upon disk verification" };
+    } catch (err: any) {
+      return { status: "failed" as const, reason: `Verification error: ${err.message}` };
+    }
+  },
 });
 
 export const readFileTool = createTool({
@@ -369,6 +403,17 @@ export const deleteFileTool = createTool({
       return `File deleted successfully: ${filePath}`;
     } catch (e: any) {
       throw new Error(`Failed to delete file: ${e.message}`);
+    }
+  },
+  verify: async ({ path: filePath }) => {
+    try {
+      const resolvedPath = resolveSafePath(filePath);
+      const exists = fsSync.existsSync(resolvedPath);
+      return !exists
+        ? { status: "verified" as const, evidence: { path: filePath, deleted: true } }
+        : { status: "failed" as const, reason: `File ${filePath} still exists on disk.` };
+    } catch (err: any) {
+      return { status: "failed" as const, reason: `Verification error: ${err.message}` };
     }
   },
 });

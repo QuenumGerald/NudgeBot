@@ -1,3 +1,5 @@
+import { isPolyfilled } from './polyfill.js';
+if (!isPolyfilled) console.log('[polyfill] failed');
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';

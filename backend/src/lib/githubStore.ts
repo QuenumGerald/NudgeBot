@@ -2,10 +2,12 @@
  * Store backed by Neon (PostgreSQL) with a fallback to GitHub/In-Memory JSON database.
  */
 
+import { isPolyfilled } from '../polyfill.js';
+if (!isPolyfilled) console.log('[githubStore] polyfill failed');
 import pg from 'pg';
 import fs from 'fs/promises';
 import path from 'path';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { initGitHubContextManager, getGitHubMemoryManager } from './githubContextManager.js';
 
 const { Pool } = pg;

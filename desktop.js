@@ -1,8 +1,30 @@
+const nodeCrypto = require('crypto');
+
+if (!global.crypto) {
+  const mergedCrypto = {};
+  for (const key of Reflect.ownKeys(nodeCrypto)) {
+    const desc = Object.getOwnPropertyDescriptor(nodeCrypto, key);
+    if (desc) Object.defineProperty(mergedCrypto, key, desc);
+  }
+  if (nodeCrypto.webcrypto) {
+    for (const key of Reflect.ownKeys(nodeCrypto.webcrypto)) {
+      const desc = Object.getOwnPropertyDescriptor(nodeCrypto.webcrypto, key);
+      if (desc) Object.defineProperty(mergedCrypto, key, desc);
+    }
+  }
+  try {
+    Object.defineProperty(global, 'crypto', { value: mergedCrypto, writable: true, configurable: true });
+    Object.defineProperty(globalThis, 'crypto', { value: mergedCrypto, writable: true, configurable: true });
+  } catch (e) {
+    global.crypto = mergedCrypto;
+    globalThis.crypto = mergedCrypto;
+  }
+}
+
 const { app, BrowserWindow, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const net = require('net');
-const crypto = require('crypto');
 const http = require('http');
 
 let port = 3000;

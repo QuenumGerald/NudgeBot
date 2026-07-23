@@ -1,6 +1,7 @@
+import { isPolyfilled } from "../../polyfill.js";
+if (!isPolyfilled) console.log('[polyfill] failed');
 import { createOpenAI } from "@ai-sdk/openai";
 import { stepCountIs, streamText } from "ai";
-import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { getTools } from "./tools.js";
 import { setupMCP } from "./mcp.js";
 
@@ -32,15 +33,8 @@ export const createModel = (provider: string, modelName: string, apiKey: string)
   return client.chat(modelName || "gpt-4o-mini");
 };
 
-// Keep createLLM as alias for backwards compatibility within the module
+// Keep createLLM as alias for backwards compatibility
 export const createLLM = createModel;
-
-const GraphState = Annotation.Root({
-  messages: Annotation<Array<{ role: "user" | "assistant"; content: string }>>(),
-  maxSteps: Annotation<number>(),
-  result: Annotation<any>(),
-});
-
 
 export const SELF_REVIEW_INSTRUCTION = `### ✅ Self-review interne avant réponse finale (CRITIQUE)
 Micro-vérification silencieuse : réponse vérifiable et utile ? Si un fait est incertain ou invérifiable, NE l'affirme PAS : dis « Je ne suis pas sûr » / « Je ne peux pas vérifier », puis propose une vérification ou demande la précision manquante. Supprime tout détail inventé (outil, fichier, lien, chiffre, date, nom, ID, statut). Self-review invisible.`;
@@ -82,7 +76,7 @@ export const getAgent = async (
   const systemParts = [
     `Tu es NudgeBot, un assistant IA personnel polyvalent et compétent.
 
-Tu es orchestré sous le capot par **LangGraph** (\`@langchain/langgraph\`) et connecté au modèle de langage via **Vercel AI SDK** en TypeScript.
+Tu es connecté au modèle de langage via **Vercel AI SDK** en TypeScript.
 L'application frontend utilise **React (Vite)** et le backend tourne sous **Node.js (Express)**.
 
 Tu peux aider sur TOUS les sujets : questions générales, programmation, rédaction, analyse, brainstorming, math, science, conseil, et bien plus.
@@ -118,6 +112,9 @@ Quand une demande concerne Jules ou les outils, explique brièvement à quoi ser
 ### 🚫 Fiabilité et anti-bluff (CRITIQUE)
 N'invente jamais. N'affirme un fait non trivial que s'il vient du contexte, d'un outil, ou d'une connaissance stable. Sinon, vérifie avec un outil disponible ; si c'est impossible, dis clairement que tu ne peux pas vérifier et demande la source/précision manquante. Distingue faits vérifiés et hypothèses.
 
+### 🛡️ Vérification d'état Actaro SDK
+Chaque exécution d'outil est désormais contrôlée en direct par **Actaro SDK** : l'action est exécutée, puis son effet sur l'état réel est relu et vérifié de manière indépendante avant de générer un reçu horodaté et signé. N'affirme qu'une action est terminée que lorsque le reçu indique \`verified=true\`.
+
 ${SELF_REVIEW_INSTRUCTION}
 
 ### 💡 Efficacité et Frugalité
@@ -135,31 +132,18 @@ Réponds en français par défaut.`,
 
   const systemPrompt = systemParts.join("\n");
 
-  const graph = new StateGraph(GraphState)
-    .addNode("agent", async (state: any) => ({
-      result: streamText({
-        model,
-        system: systemPrompt,
-        messages: state.messages,
-        tools: allTools,
-        stopWhen: stepCountIs(state.maxSteps),
-      }),
-    }))
-    .addEdge(START, "agent")
-    .addEdge("agent", END)
-    .compile();
-
   return {
     id: `nudgebot-${userId || "default"}`,
     name: "NudgeBot",
     async stream(messages: Array<{ role: "user" | "assistant"; content: string }>, options: StreamOptions = {}) {
-      const state = await graph.invoke({
-        messages,
-        maxSteps: options.maxSteps ?? 10,
-      }, {
-        runName: options.runId,
-      } as any);
-      return state.result;
+      const maxSteps = options.maxSteps ?? 10;
+      return streamText({
+        model,
+        system: systemPrompt,
+        messages: messages as any,
+        tools: allTools,
+        stopWhen: stepCountIs(maxSteps),
+      });
     },
   };
 };

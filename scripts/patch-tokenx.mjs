@@ -195,3 +195,29 @@ for (const extPath of extAppsPaths) {
     console.log(`[patch-tokenx] Updated package.json for ext-apps at: ${pkgJsonPath}`);
   }
 }
+
+// 4. Patch @langchain/core uuid/v4.js & bare crypto calls across node_modules
+function patchBareCrypto(dir) {
+  if (!fs.existsSync(dir)) return;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name !== '.bin' && entry.name !== 'electron') {
+        patchBareCrypto(full);
+      }
+    } else if (entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.mjs') || entry.name.endsWith('.cjs'))) {
+      try {
+        let content = fs.readFileSync(full, 'utf8');
+        if (/\bcrypto\.(getRandomValues|randomUUID|subtle)\b/.test(content) && !content.includes('globalThis.crypto')) {
+          content = content.replace(/\bcrypto\.(getRandomValues|randomUUID|subtle)\b/g, '(globalThis.crypto || require("node:crypto").webcrypto).$1');
+          fs.writeFileSync(full, content, 'utf8');
+          console.log(`[patch-tokenx] Patched bare crypto in ${full}`);
+        }
+      } catch (err) {}
+    }
+  }
+}
+
+patchBareCrypto(path.join(rootDir, 'node_modules'));
+patchBareCrypto(path.join(rootDir, 'backend', 'node_modules'));

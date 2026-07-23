@@ -1,6 +1,9 @@
+import { isPolyfilled } from "../../polyfill.js";
+if (!isPolyfilled) console.log("[mcp] polyfill failed");
 import { jsonSchema } from "ai";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { runVerifiedAction } from "./actaro.js";
 
 export const AVAILABLE_INTEGRATIONS = [
   "fetch",
@@ -30,16 +33,22 @@ const disconnectClients = async (runtime?: Pick<McpRuntime, "clients" | "transpo
   await Promise.all(runtime.transports.map((transport) => transport.close().catch(() => undefined)));
 };
 
+const getBaseEnv = () => ({
+  ...(process.env as Record<string, string>),
+  NODE_OPTIONS: "--experimental-global-webcrypto",
+});
+
 const ALL_SERVERS = () => ({
   fetch: {
     command: "npx",
     args: ["-y", "@mokei/mcp-fetch"],
+    env: getBaseEnv(),
   },
   github: {
     command: "npx",
     args: ["-y", "@modelcontextprotocol/server-github"],
     env: {
-      ...(process.env as Record<string, string>),
+      ...getBaseEnv(),
       GITHUB_PERSONAL_ACCESS_TOKEN: toEnv(process.env.GITHUB_PERSONAL_ACCESS_TOKEN || process.env.GITHUB_TOKEN || process.env.GITHUB_CONTEXT_TOKEN),
     },
   },
@@ -47,7 +56,7 @@ const ALL_SERVERS = () => ({
     command: "npx",
     args: ["-y", "mcp-google-calendar"],
     env: {
-      ...(process.env as Record<string, string>),
+      ...getBaseEnv(),
       GOOGLE_CLIENT_ID: toEnv(process.env.GOOGLE_CLIENT_ID),
       GOOGLE_CLIENT_SECRET: toEnv(process.env.GOOGLE_CLIENT_SECRET),
       GOOGLE_REFRESH_TOKEN: toEnv(process.env.GOOGLE_REFRESH_TOKEN),
@@ -58,7 +67,7 @@ const ALL_SERVERS = () => ({
     command: "npx",
     args: ["-y", "@devpuccino/mcp-jira"],
     env: {
-      ...(process.env as Record<string, string>),
+      ...getBaseEnv(),
       JIRA_API_TOKEN: toEnv(process.env.JIRA_API_TOKEN),
       JIRA_EMAIL: toEnv(process.env.JIRA_EMAIL),
       JIRA_URL: toEnv(process.env.JIRA_URL),
@@ -68,7 +77,7 @@ const ALL_SERVERS = () => ({
     command: "npx",
     args: ["-y", "@devpuccino/mcp-confluence"],
     env: {
-      ...(process.env as Record<string, string>),
+      ...getBaseEnv(),
       CONFLUENCE_API_TOKEN: toEnv(process.env.CONFLUENCE_API_TOKEN || process.env.JIRA_API_TOKEN),
       CONFLUENCE_EMAIL: toEnv(process.env.CONFLUENCE_EMAIL || process.env.JIRA_EMAIL),
       CONFLUENCE_DOMAIN: toEnv(process.env.CONFLUENCE_URL),
@@ -77,12 +86,12 @@ const ALL_SERVERS = () => ({
   render: {
     command: "npx",
     args: ["-y", "mcp-render"],
-    env: { ...(process.env as Record<string, string>), RENDER_API_KEY: toEnv(process.env.RENDER_API_KEY) },
+    env: { ...getBaseEnv(), RENDER_API_KEY: toEnv(process.env.RENDER_API_KEY) },
   },
   netlify: {
     command: "npx",
     args: ["-y", "@netlify/mcp"],
-    env: { ...(process.env as Record<string, string>), NETLIFY_AUTH_TOKEN: toEnv(process.env.NETLIFY_AUTH_TOKEN) },
+    env: { ...getBaseEnv(), NETLIFY_AUTH_TOKEN: toEnv(process.env.NETLIFY_AUTH_TOKEN) },
   },
 });
 
@@ -105,13 +114,39 @@ const initializeMCP = async (enabledIntegrations: string[], cacheKey: string): P
       const listed = await client.listTools();
       for (const mcpTool of listed.tools ?? []) {
         const toolName = `${integrationId}_${mcpTool.name}`;
+        const schema = jsonSchema(mcpTool.inputSchema as any);
         tools[toolName] = {
           id: toolName,
           description: mcpTool.description || `MCP tool ${mcpTool.name} from ${integrationId}.`,
-          inputSchema: jsonSchema(mcpTool.inputSchema as any),
+          inputSchema: schema,
           execute: async (input: Record<string, unknown>) => {
-            const result = await client.callTool({ name: mcpTool.name, arguments: input });
-            return JSON.stringify(result.content ?? result, null, 2);
+            const { output } = await runVerifiedAction({
+              name: toolName,
+              description: mcpTool.description || `MCP tool ${mcpTool.name} from ${integrationId}.`,
+              inputSchema: schema,
+              input,
+              execute: async (inp) => {
+                const res = await client.callTool({
+                  name: mcpTool.name,
+                  arguments: inp,
+                });
+                return JSON.stringify(res.content ?? res, null, 2);
+              },
+              verify: async (_inp, executeResult) => {
+                if (executeResult && typeof executeResult === "string" && executeResult.length > 0) {
+                  return {
+                    status: "verified" as const,
+                    evidence: {
+                      integration: integrationId,
+                      mcpTool: mcpTool.name,
+                      contentLength: executeResult.length,
+                    },
+                  };
+                }
+                return { status: "failed" as const, reason: "Empty response from MCP tool." };
+              },
+            });
+            return output;
           },
         };
       }

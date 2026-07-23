@@ -1,3 +1,5 @@
+import { isPolyfilled } from '../polyfill.js';
+if (!isPolyfilled) console.log('[polyfill] failed');
 import { Router, Request, Response as ExpressResponse } from 'express';
 import { getAgent } from '../lib/agent/graph.js';
 import { getStore } from '../lib/githubStore.js';
@@ -291,7 +293,14 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
     }));
 
     const maxSteps = getAgentMaxSteps();
-    const result = await agent.stream(agentMessages, { maxSteps, runId: `req-${Date.now()}` });
+    let result: any;
+    try {
+      result = await agent.stream(agentMessages, { maxSteps, runId: `req-${Date.now()}` });
+    } catch (agentErr: any) {
+      console.error('[agent.stream ERROR STACK]:', agentErr.stack || agentErr);
+      res.write(`data: ${JSON.stringify({ type: 'error', error: agentErr?.message || String(agentErr) })}\n\n`);
+      return res.end();
+    }
 
     let content = '';
 
@@ -320,10 +329,12 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
           result: payload.result ?? payload.output
         })}\n\n`);
       } else if (chunk.type === 'error') {
+        console.log('[STREAM CHUNK ERROR DETAILED]:', JSON.stringify(chunk));
         const streamError = payload.error;
+        console.error('[chat chunk error]:', payload);
         res.write(`data: ${JSON.stringify({
           type: 'error',
-          error: streamError instanceof Error ? streamError.message : String(streamError)
+          error: streamError instanceof Error ? streamError.message : (typeof streamError === 'object' ? JSON.stringify(streamError) : String(streamError))
         })}\n\n`);
       }
     }
@@ -361,7 +372,7 @@ router.post('/', async (req: AuthenticatedRequest & Request<unknown, unknown, Ch
     res.end();
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Server Error';
-    console.error('Chat API Error:', error);
+    console.log('Chat API Error Stack:', error instanceof Error ? error.stack : error);
     res.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
     res.end();
   }
